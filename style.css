@@ -1,8 +1,0 @@
-:root { --bg-color: #0b0c0c; --text-primary: #ffffff; --accent-yellow: #fde030; }
-body { background-color: var(--bg-color); color: var(--text-primary); font-family: 'Outfit', sans-serif; }
-.navbar { display: flex; justify-content: space-between; padding: 1.5rem 3rem; border-bottom: 1px solid rgba(255,255,255,0.1); }
-.hero-section { text-align: center; padding: 8rem 2rem; }
-.hero-title { font-size: 5rem; font-weight: 700; }
-.highlight { color: var(--accent-yellow); }
-.primary-btn { background: var(--accent-yellow); color: #000; padding: 1rem 2rem; border-radius: 12px; font-weight: 600; text-decoration: none; }
-.secondary-btn { background: rgba(255,255,255,0.05); color: #fff; padding: 1rem 2rem; border-radius: 12px; margin-left: 1rem; text-decoration: none; }
