@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markets - Hedera.Meme</title>
+    <meta name="description" content="Discover the most viral meme tokens on Hedera Testnet.">
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="overlay-gradient" style="height: 30vh; opacity: 0.5;"></div>
+    <header class="navbar">
+        <div class="logo-container">
+            <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M11 2L12.5 8.5L19 10L12.5 11.5L11 18L9.5 11.5L3 10L9.5 8.5L11 2Z" fill="#FFD700" stroke="#FFD700" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="18" cy="18" r="2" fill="#FFD700"/>
+                <circle cx="6" cy="19" r="1.5" fill="#FFD700"/>
+            </svg>
+            <a href="index.html" class="logo-text" style="text-decoration: none;">Hedera.Meme</a>
+        </div>
+        
+        <nav class="nav-links">
+            <div class="nav-dropdown-container">
+                <a href="#" class="nav-link" id="tradeDropdownBtn">Trade <svg width="12" height="12" viewBox="0 0 24 24" fill="none" class="dropdown-icon"><path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+                <div class="nav-dropdown-menu" id="tradeDropdownMenu">
+                    <a href="markets.html" class="dropdown-item">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>
+                        Spot Trading
+                    </a>
+                    <a href="#" class="dropdown-item">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z"></path><circle cx="18" cy="18" r="1.5"></circle><circle cx="6" cy="19" r="1"></circle></svg>
+                        Launch Meme
+                    </a>
+                </div>
+            </div>
+            <a href="markets.html" class="nav-link active">Markets</a>
+            <a href="#" class="nav-link">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" class="nav-icon"><path d="M8 21H16M12 17V21M7 4H17M7 4C7 8.418 8.418 12 12 12M17 4C17 8.418 15.582 12 12 12M7 4H5C3.895 4 3 4.895 3 6C3 8.209 4.791 10 7 10H7C8.418 10 10 8.418 10 6M17 4H19C20.105 4 21 4.895 21 6C21 8.209 19.209 10 17 10H17C15.582 10 14 8.418 14 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Leaderboard
+            </a>
+            <a href="#" class="nav-link">Portfolio</a>
+        </nav>
+        
+        <button class="connect-btn" id="connectWalletBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M19 12H21"/><path d="M16 12H16.01"/></svg>
+            Connect Wallet
+        </button>
+    </header>
+
+    <main class="markets-container">
+        <div class="markets-header">
+            <div class="markets-title-area">
+                <h1 class="markets-title">Hot Memes</h1>
+                <p class="markets-subtitle">Discover the most viral tokens</p>
+            </div>
+            <div class="markets-filters">
+                <button class="filter-btn active">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.5 19C19.5 17 21 14.5 21 12C21 7 16 3 12 3C8 3 3 7 3 12C3 14.5 4.5 17 6.5 19"/><path d="M12 21V15M12 15L9 18M12 15L15 18"/></svg>
+                    Trending
+                </button>
+                <button class="filter-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    New
+                </button>
+                <button class="filter-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>
+                    Gainers
+                </button>
+                <button class="filter-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+                    Volume
+                </button>
+            </div>
+        </div>
+
+        <div class="tokens-grid">
+            <!-- Card 1: WOJAK -->
+            <a href="chart.html" class="token-card">
+                <div class="card-header">
+                    <div class="token-avatar">
+                        <span class="emoji">😭</span>
+                    </div>
+                    <div class="token-info">
+                        <div class="token-name-row">
+                            <span class="token-name">WOJAK</span>
+                            <span class="hot-badge">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C12 2 7 7 7 12C7 14.76 9.24 17 12 17C14.76 17 17 14.76 17 12C17 7 12 2 12 2Z"></path><path d="M12 22C17.52 22 22 17.52 22 12C22 10.3 21.56 8.7 20.82 7.34C19.8 9.38 17.8 11.08 15.34 11.66C13.8 12 12.56 12.82 12.56 14.34C12.56 15 13.1 15.54 13.76 15.54C14.42 15.54 14.96 15 14.96 14.34C14.96 13.92 15.3 13.58 15.72 13.58C16.14 13.58 16.48 13.92 16.48 14.34C16.48 16 15.14 17.34 13.48 17.34C11.66 17.34 10.18 15.86 10.18 14C10.18 11.52 11.78 9.4 13.94 8.58C13.62 6.64 12.9 4.86 12 2Z"></path></svg>
+                                Hot
+                            </span>
+                        </div>
+                        <span class="token-symbol">$WOJAK</span>
+                    </div>
+                </div>
+                
+                <div class="card-stats">
+                    <div class="stat-group">
+                        <span class="stat-label">Price</span>
+                        <span class="stat-value">$0.0023</span>
+                    </div>
+                    <div class="stat-group">
+                        <span class="stat-label">24h Change</span>
+                        <span class="stat-value positive">↗ +142.5%</span>
+                    </div>
+                    <div class="stat-group">
+                        <span class="stat-label">Volume</span>
+                        <span class="stat-value">$2.4M</span>
+                    </div>
+                    <div class="stat-group">
+                        <span class="stat-label">Holders</span>
+                        <span class="stat-value">8,934</span>
+                    </div>
+                </div>
+                
+                <div class="card-chart">
+                    <svg viewBox="0 0 100 25" class="sparkline positive-chart" preserveAspectRatio="none">
+                        <path d="M0,20 Q10,15 20,20 T40,15 T60,10 T80,12 T100,2" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <path d="M0,20 Q10,15 20,20 T40,15 T60,10 T80,12 T100,2 L100,25 L0,25 Z" fill="url(#positive-gradient)" opacity="0.3"/>
+                        <defs>
+                            <linearGradient id="positive-gradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#4ade80"/>
+                                <stop offset="100%" stop-color="rgba(74, 222, 128, 0)"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+            </a>
+
+            <!-- Card 2: PEPE CLASSIC -->
+            <a href="chart.html" class="token-card">
+                <div class="card-header">
+                    <div class="token-avatar">
+                        <span class="emoji">🐸</span>
+                    </div>
+                    <div class="token-info">
+                        <div class="token-name-row">
+                            <span class="token-name">PEPE CLASSIC</span>
+                            <span class="hot-badge">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C12 2 7 7 7 12C7 14.76 9.24 17 12 17C14.76 17 17 14.76 17 12C17 7 12 2 12 2Z"></path></svg>
+                                Hot
+                            </span>
+                        </div>
+                        <span class="token-symbol">$PEPEC</span>
+                    </div>
+                </div>
+                
+                <div class="card-stats">
+                    <div class="stat-group">
+                        <span class="stat-label">Price</span>
+                        <span class="stat-value">$0.0000089</span>
+                    </div>
+                    <div class="stat-group">
+                        <span class="stat-label">24h Change</span>
+                        <span class="stat-value positive">↗ +67.3%</span>
+                    </div>
+                    <div class="stat-group">
+                        <span class="stat-label">Volume</span>
+                        <span class="stat-value">$8.9M</span>
+                    </div>
+                    <div class="stat-group">
+                        <span class="stat-label">Holders</span>
+                        <span class="stat-value">24,521</span>
+                    </div>
+                </div>
+                
+                <div class="card-chart">
+                    <svg viewBox="0 0 100 25" class="sparkline positive-chart" preserveAspectRatio="none">
+                        <path d="M0,22 Q20,18 40,15 T70,12 T100,5" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <path d="M0,22 Q20,18 40,15 T70,12 T100,5 L100,25 L0,25 Z" fill="url(#positive-gradient)" opacity="0.3"/>
+                    </svg>
+                </div>
+            </a>
+
+            <!-- Card 3: CHAD TOKEN -->
+            <a href="chart.html" class="token-card">
+                <div class="card-header">
+                    <div class="token-avatar">
+                        <span class="emoji">💪</span>
+                    </div>
+                    <div class="token-info">
+                        <div class="token-name-row">
+                            <span class="token-name">CHAD TOKEN</span>
+                            <span class="hot-badge">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C12 2 7 7 7 12C7 14.76 9.24 17 12 17C14.76 17 17 14.76 17 12C17 7 12 2 12 2Z"></path></svg>
+                                Hot
+                            </span>
+                        </div>
+                        <span class="token-symbol">$CHAD</span>
+                    </div>
+                </div>
+                
+                <div class="card-stats">
+                    <div class="stat-group">
+                        <span class="stat-label">Price</span>
+                        <span class="stat-value">$0.0891</span>
+                    </div>
+                    <div class="stat-group">
+                        <span class="stat-label">24h Change</span>
+                        <span class="stat-value positive">↗ +234.8%</span>
+                    </div>
+                    <div class="stat-group">
+                        <span class="stat-label">Volume</span>
+                        <span class="stat-value">$5.6M</span>
+                    </div>
+                    <div class="stat-group">
+                        <span class="stat-label">Holders</span>
+                        <span class="stat-value">12,098</span>
+                    </div>
+                </div>
+                
+                <div class="card-chart">
+                    <svg viewBox="0 0 100 25" class="sparkline positive-chart" preserveAspectRatio="none">
+                        <path d="M0,20 Q15,22 30,18 T60,10 T85,15 T100,2" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <path d="M0,20 Q15,22 30,18 T60,10 T85,15 T100,2 L100,25 L0,25 Z" fill="url(#positive-gradient)" opacity="0.3"/>
+                    </svg>
+                </div>
+            </a>
+            
+             <!-- Card 4: STONKS -->
+            <a href="chart.html" class="token-card">
+                <div class="card-header">
+                    <div class="token-avatar">
+                        <span class="emoji">📈</span>
+                    </div>
+                    <div class="token-info">
+                        <div class="token-name-row">
+                            <span class="token-name">STONKS</span>
+                            <span class="hot-badge">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C12 2 7 7 7 12C7 14.76 9.24 17 12 17C14.76 17 17 14.76 17 12C17 7 12 2 12 2Z"></path></svg>
+                                Hot
+                            </span>
+                        </div>
+                        <span class="token-symbol">$STONKS</span>
+                    </div>
+                </div>
+                
+                <div class="card-stats">
+                    <div class="stat-group">
+                        <span class="stat-label">Price</span>
+                        <span class="stat-value">$0.0075</span>
+                    </div>
+                    <div class="stat-group">
+                        <span class="stat-label">24h Change</span>
+                        <span class="stat-value positive">↗ +89.2%</span>
+                    </div>
+                    <div class="stat-group">
+                        <span class="stat-label">Volume</span>
+                        <span class="stat-value">$1.2M</span>
+                    </div>
+                    <div class="stat-group">
+                        <span class="stat-label">Holders</span>
+                        <span class="stat-value">5,432</span>
+                    </div>
+                </div>
+                
+                <div class="card-chart">
+                    <svg viewBox="0 0 100 25" class="sparkline positive-chart" preserveAspectRatio="none">
+                        <path d="M0,18 Q15,10 30,12 T60,8 T85,14 T100,4" fill="none" stroke="currentColor" stroke-width="2"/>
+                        <path d="M0,18 Q15,10 30,12 T60,8 T85,14 T100,4 L100,25 L0,25 Z" fill="url(#positive-gradient)" opacity="0.3"/>
+                    </svg>
+                </div>
+            </a>
+        </div>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Launch Meme - Hedera.Meme</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="overlay-gradient"></div>
+    <header class="navbar">
+        <div class="logo-container">
+            <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M11 2L12.5 8.5L19 10L12.5 11.5L11 18L9.5 11.5L3 10L9.5 8.5L11 2Z" fill="#FFD700" stroke="#FFD700" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="18" cy="18" r="2" fill="#FFD700"/>
+                <circle cx="6" cy="19" r="1.5" fill="#FFD700"/>
+            </svg>
+            <span class="logo-text">Hedera.Meme</span>
+        </div>
+        
+        <nav class="nav-links">
+            <div class="nav-dropdown-container">
+                <a href="#" class="nav-link" id="tradeDropdownBtn">Trade <svg width="12" height="12" viewBox="0 0 24 24" fill="none" class="dropdown-icon"><path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+                <div class="nav-dropdown-menu" id="tradeDropdownMenu">
+                    <a href="index.html" class="dropdown-item">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>
+                        Spot Trading
+                    </a>
+                    <a href="launch.html" class="dropdown-item">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z"></path><circle cx="18" cy="18" r="1.5"></circle><circle cx="6" cy="19" r="1"></circle></svg>
+                        Launch Meme
+                    </a>
+                </div>
+            </div>
+            <a href="markets.html" class="nav-link">Markets</a>
+            <a href="#" class="nav-link">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" class="nav-icon"><path d="M8 21H16M12 17V21M7 4H17M7 4C7 8.418 8.418 12 12 12M17 4C17 8.418 15.582 12 12 12M7 4H5C3.895 4 3 4.895 3 6C3 8.209 4.791 10 7 10H7C8.418 10 10 8.418 10 6M17 4H19C20.105 4 21 4.895 21 6C21 8.209 19.209 10 17 10H17C15.582 10 14 8.418 14 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Leaderboard
+            </a>
+            <a href="#" class="nav-link">Portfolio</a>
+        </nav>
+        
+        <button class="connect-btn" id="connectWalletBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M19 12H21"/><path d="M16 12H16.01"/></svg>
+            Connect Wallet
+        </button>
+    </header>
+
+    <main class="launch-container">
+        <div class="launch-header">
+            <div class="launch-icon-container">
+                🚀
+            </div>
+            <h1 class="launch-title">Create New Meme</h1>
+            <p class="launch-subtitle">Fill in the details below</p>
+        </div>
+
+        <form class="launch-form">
+            <div class="form-group">
+                <label for="tokenName">Token Name</label>
+                <input type="text" id="tokenName" placeholder="My Awesome Meme" value="My Awesome Meme">
+            </div>
+
+            <div class="form-group">
+                <label for="ticker">Ticker</label>
+                <input type="text" id="ticker" placeholder="$MEME" value="$MEME">
+            </div>
+
+            <div class="form-group">
+                <label for="initialSupply">Initial Supply</label>
+                <input type="text" id="initialSupply" placeholder="1,000,000,000" value="1,000,000,000">
+            </div>
+
+            <div class="launch-summary">
+                <div class="summary-row">
+                    <span class="summary-label">Launch Fee</span>
+                    <span class="summary-value">0.1 SOL</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Initial Liquidity</span>
+                    <span class="summary-value">Auto-funded</span>
+                </div>
+                <div class="summary-row">
+                    <span class="summary-label">Trading Fee</span>
+                    <span class="summary-value">1%</span>
+                </div>
+            </div>
+
+            <button type="button" class="launch-submit-btn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 10.5L21 3"/><path d="M16 3H21V8"/><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/></svg>
+                Connect Wallet to Launch
+            </button>
+        </form>
+    </main>
+
+    <!-- Wallet Connect Modal -->
+    <div class="wallet-modal-overlay" id="walletModal">
+        <div class="wallet-modal">
+            <div class="wallet-modal-header">
+                <h3>Connect Wallet</h3>
+                <button class="close-modal-btn" id="closeWalletModal">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="wallet-options">
+                <button class="wallet-option" onclick="alert('Connecting to HashPack...')">
+                    <svg width="32" height="32" viewBox="0 0 130 130" fill="none" stroke="white" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" style="background-color: #222430; border-radius: 8px; padding: 4px;">
+                        <path d="M 30 80 V 50 C 30 25 50 25 50 50 C 50 85 80 85 80 50 C 80 25 100 25 100 50 V 80" />
+                        <path d="M 30 80 C 30 105 50 105 50 80" />
+                        <path d="M 80 80 C 80 105 100 105 100 80" />
+                    </svg>
+                    <div class="wallet-option-info">
+                        <span class="wallet-name">HashPack</span>
+                        <span class="wallet-desc">Popular Hedera Wallet</span>
+                    </div>
+                </button>
+                <button class="wallet-option" onclick="alert('Connecting to Blade Wallet...')">
+                    <div class="wallet-icon-placeholder" style="background: #2563eb; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white;">B</div>
+                    <div class="wallet-option-info">
+                        <span class="wallet-name">Blade Wallet</span>
+                        <span class="wallet-desc">Enterprise Grade</span>
+                    </div>
+                </button>
+                <button class="wallet-option" onclick="alert('Connecting to MetaMask...')">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="MetaMask" style="width: 32px; height: 32px;">
+                    <div class="wallet-option-info">
+                        <span class="wallet-name">MetaMask</span>
+                        <span class="wallet-desc">EVM Compatible</span>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

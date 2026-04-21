@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spot Trade PEPE CLASSIC - Hedera.Meme</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="overlay-gradient"></div>
+    <header class="navbar">
+        <div class="logo-container">
+            <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M11 2L12.5 8.5L19 10L12.5 11.5L11 18L9.5 11.5L3 10L9.5 8.5L11 2Z" fill="#FFD700" stroke="#FFD700" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="18" cy="18" r="2" fill="#FFD700"/>
+                <circle cx="6" cy="19" r="1.5" fill="#FFD700"/>
+            </svg>
+            <span class="logo-text">Hedera.Meme</span>
+        </div>
+        
+        <nav class="nav-links">
+            <div class="nav-dropdown-container">
+                <a href="#" class="nav-link active" id="tradeDropdownBtn">Trade <svg width="12" height="12" viewBox="0 0 24 24" fill="none" class="dropdown-icon"><path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+                <div class="nav-dropdown-menu" id="tradeDropdownMenu">
+                    <a href="chart.html" class="dropdown-item">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline><polyline points="16 7 22 7 22 13"></polyline></svg>
+                        Spot Trading
+                    </a>
+                    <a href="launch.html" class="dropdown-item">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z"></path><circle cx="18" cy="18" r="1.5"></circle><circle cx="6" cy="19" r="1"></circle></svg>
+                        Launch Meme
+                    </a>
+                </div>
+            </div>
+            <a href="markets.html" class="nav-link">Markets</a>
+            <a href="leaderboard.html" class="nav-link">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" class="nav-icon"><path d="M8 21H16M12 17V21M7 4H17M7 4C7 8.418 8.418 12 12 12M17 4C17 8.418 15.582 12 12 12M7 4H5C3.895 4 3 4.895 3 6C3 8.209 4.791 10 7 10H7C8.418 10 10 8.418 10 6M17 4H19C20.105 4 21 4.895 21 6C21 8.209 19.209 10 17 10H17C15.582 10 14 8.418 14 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Leaderboard
+            </a>
+            <a href="#" class="nav-link">Portfolio</a>
+        </nav>
+        
+        <button class="connect-btn" id="connectWalletBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M19 12H21"/><path d="M16 12H16.01"/></svg>
+            Connect Wallet
+        </button>
+    </header>
+
+    <main class="spot-container">
+        <!-- Left Column: Chart -->
+        <div class="chart-section">
+            <div class="chart-box" style="background-color: #121315; border-radius: 16px;">
+                <div class="chart-header">
+                    <div class="token-title-group">
+                        <div class="item-avatar-square" style="width:56px; height:56px; font-size:1.8rem;">🐸</div>
+                        <div class="token-title-info">
+                            <div class="token-title-name">PEPE CLASSIC</div>
+                            <div class="token-title-pair">$PEPEC / HBAR</div>
+                        </div>
+                    </div>
+                    <div class="price-info">
+                        <div class="current-price">$0.0000089</div>
+                        <div class="price-change">+67.3%</div>
+                    </div>
+                </div>
+
+                <div class="chart-area" style="margin-top: 2rem;">
+                    <!-- SVG Area Chart to match the image -->
+                    <svg width="100%" height="250" viewBox="0 0 500 250" preserveAspectRatio="none">
+                        <defs>
+                            <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="rgba(74, 222, 128, 0.3)" />
+                                <stop offset="100%" stop-color="rgba(74, 222, 128, 0)" />
+                            </linearGradient>
+                        </defs>
+                        <!-- Chart path roughly mimicking the photo's shape -->
+                        <path d="M0,220 C50,210 100,160 150,130 C200,100 250,90 280,100 C310,110 330,130 350,115 C380,90 400,30 430,20 C450,10 480,20 500,40 L500,250 L0,250 Z" fill="url(#chartGradient)" />
+                        <path d="M0,220 C50,210 100,160 150,130 C200,100 250,90 280,100 C310,110 330,130 350,115 C380,90 400,30 430,20 C450,10 480,20 500,40" fill="none" stroke="#4ade80" stroke-width="3" />
+                    </svg>
+                </div>
+                
+                <div class="chart-timeframes">
+                    <span>1H</span>
+                    <span>6H</span>
+                    <span>12H</span>
+                    <span>24H</span>
+                    <span>7D</span>
+                </div>
+            </div>
+
+            <div class="token-stats-row">
+                <div class="stat-box">
+                    <span class="stat-secondary">Market Cap</span>
+                    <span class="stat-primary">$45.2M</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-secondary">24h Volume</span>
+                    <span class="stat-primary">$8.9M</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-secondary">Holders</span>
+                    <span class="stat-primary">24,521</span>
+                </div>
+                <div class="stat-box">
+                    <span class="stat-secondary">Liquidity</span>
+                    <span class="stat-primary">$2.1M</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Trade Panel -->
+        <div class="trade-section">
+            <h2 class="trade-header">Trade</h2>
+            
+            <div class="trade-tabs">
+                <div class="trade-tab active">Buy</div>
+                <div class="trade-tab">Sell</div>
+            </div>
+
+            <div class="trade-input-group">
+                <div class="trade-input-header">
+                    <span>You Pay</span>
+                    <span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:2px"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M19 12H21"/><path d="M16 12H16.01"/></svg> 12.45 HBAR</span>
+                </div>
+                <div class="trade-input-box">
+                    <input type="text" value="0.00" placeholder="0.00">
+                    <div class="token-selector">
+                        <div style="width: 20px; height: 20px; background-color: var(--accent-yellow); border-radius: 50%;"></div>
+                        HBAR
+                    </div>
+                </div>
+            </div>
+
+            <div class="swap-icon-container">
+                <div class="swap-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16V4M7 4L3 8M7 4L11 8M17 8v12M17 20l-4-4M17 20l4-4"/></svg>
+                </div>
+            </div>
+
+            <div class="trade-input-group">
+                <div class="trade-input-header">
+                    <span>You Receive</span>
+                    <span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:2px"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M19 12H21"/><path d="M16 12H16.01"/></svg> 0 $PEPEC</span>
+                </div>
+                <div class="trade-input-box">
+                    <input type="text" value="0.00" placeholder="0.00">
+                    <div class="token-selector">
+                        <span style="font-size: 1.2rem;">🐸</span>
+                        $PEPEC
+                    </div>
+                </div>
+            </div>
+
+            <button class="trade-submit-btn">Swap</button>
+        </div>
+    </main>
+
+    <!-- Wallet Connect Modal -->
+    <div class="wallet-modal-overlay" id="walletModal">
+        <div class="wallet-modal">
+            <div class="wallet-modal-header">
+                <h3>Connect Wallet</h3>
+                <button class="close-modal-btn" id="closeWalletModal">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="wallet-options">
+                <button class="wallet-option" onclick="alert('Connecting to HashPack...')">
+                    <svg width="32" height="32" viewBox="0 0 130 130" fill="none" stroke="white" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" style="background-color: #222430; border-radius: 8px; padding: 4px;">
+                        <path d="M 30 80 V 50 C 30 25 50 25 50 50 C 50 85 80 85 80 50 C 80 25 100 25 100 50 V 80" />
+                        <path d="M 30 80 C 30 105 50 105 50 80" />
+                        <path d="M 80 80 C 80 105 100 105 100 80" />
+                    </svg>
+                    <div class="wallet-option-info">
+                        <span class="wallet-name">HashPack</span>
+                        <span class="wallet-desc">Popular Hedera Wallet</span>
+                    </div>
+                </button>
+                <button class="wallet-option" onclick="alert('Connecting to Blade Wallet...')">
+                    <div class="wallet-icon-placeholder" style="background: #2563eb; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white;">B</div>
+                    <div class="wallet-option-info">
+                        <span class="wallet-name">Blade Wallet</span>
+                        <span class="wallet-desc">Enterprise Grade</span>
+                    </div>
+                </button>
+                <button class="wallet-option" onclick="alert('Connecting to MetaMask...')">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg" alt="MetaMask" style="width: 32px; height: 32px;">
+                    <div class="wallet-option-info">
+                        <span class="wallet-name">MetaMask</span>
+                        <span class="wallet-desc">EVM Compatible</span>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
