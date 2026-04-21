@@ -1,29 +1,6 @@
+import './wallet.js';
+
 document.addEventListener('DOMContentLoaded', () => {
-    const connectWalletBtn = document.getElementById('connectWalletBtn');
-    const walletModal = document.getElementById('walletModal');
-    const closeWalletModal = document.getElementById('closeWalletModal');
-    
-    if (connectWalletBtn && walletModal) {
-        connectWalletBtn.addEventListener('click', () => {
-            walletModal.classList.add('active');
-            document.body.style.overflow = 'hidden'; // Prevent background scrolling
-        });
-    }
-
-    if (closeWalletModal && walletModal) {
-        closeWalletModal.addEventListener('click', () => {
-            walletModal.classList.remove('active');
-            document.body.style.overflow = ''; // Restore scrolling
-        });
-
-        // Close when clicking outside the modal content
-        walletModal.addEventListener('click', (e) => {
-            if (e.target === walletModal) {
-                walletModal.classList.remove('active');
-                document.body.style.overflow = '';
-            }
-        });
-    }
     const primaryBtn = document.querySelector('.primary-btn');
     if (primaryBtn) {
         primaryBtn.addEventListener('click', () => {
