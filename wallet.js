@@ -14,7 +14,7 @@ const metadata = {
 };
 
 // 3. Create the AppKit instance with the Ethers adapter
-const appkit = createAppKit({
+export const appkit = createAppKit({
   adapters: [new EthersAdapter()],
   networks: [hedera, hederaTestnet],
   metadata,
