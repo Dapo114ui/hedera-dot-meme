@@ -23,6 +23,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             appkit.open();
         });
+        
+        const launchSubmitBtn = document.querySelector('.launch-submit-btn');
+        if (launchSubmitBtn) {
+            launchSubmitBtn.addEventListener('click', () => {
+                const state = appkit.getState();
+                if (!state.isConnected) {
+                    appkit.open();
+                } else {
+                    alert('Launching Meme...');
+                }
+            });
+        }
 
         async function getHederaNativeId(evmAddress) {
             // 1. Handle Long-Zero Address automatically
@@ -60,6 +72,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const updateWalletButtonState = async (state) => {
+            const launchSubmitBtn = document.querySelector('.launch-submit-btn');
+            
             if (state.isConnected && state.address) {
                 const evmAddress = state.address;
                 
@@ -79,8 +93,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     customWalletBtn.innerHTML = `HBAR Connected`;
                 }
+                
+                if (launchSubmitBtn) {
+                    launchSubmitBtn.innerHTML = `
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 10.5L21 3"/><path d="M16 3H21V8"/><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/></svg>
+                        Launch Meme
+                    `;
+                }
             } else {
                 customWalletBtn.innerHTML = `Connect Wallet`;
+                if (launchSubmitBtn) {
+                    launchSubmitBtn.innerHTML = `
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 10.5L21 3"/><path d="M16 3H21V8"/><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/></svg>
+                        Connect Wallet to Launch
+                    `;
+                }
             }
         };
 
