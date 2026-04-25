@@ -1,4 +1,5 @@
 import { appkit } from './wallet.js';
+import { BrowserProvider, parseEther } from 'ethers';
 
 document.addEventListener('DOMContentLoaded', () => {
     // Custom Wallet Button Logic
@@ -26,12 +27,50 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const launchSubmitBtn = document.querySelector('.launch-submit-btn');
         if (launchSubmitBtn) {
-            launchSubmitBtn.addEventListener('click', () => {
+            launchSubmitBtn.addEventListener('click', async () => {
                 const state = appkit.getState();
                 if (!state.isConnected) {
                     appkit.open();
                 } else {
-                    alert('Launching Meme...');
+                    try {
+                        const walletProvider = appkit.getWalletProvider();
+                        if (!walletProvider) {
+                            alert("No wallet provider found. Please reconnect your wallet.");
+                            return;
+                        }
+                        
+                        const provider = new BrowserProvider(walletProvider);
+                        const signer = await provider.getSigner();
+                        const address = await signer.getAddress();
+                        
+                        // Show loading state
+                        const originalHtml = launchSubmitBtn.innerHTML;
+                        launchSubmitBtn.innerHTML = `Loading...`;
+                        launchSubmitBtn.disabled = true;
+                        
+                        // Send 5 HBAR to self to simulate the launch fee transaction
+                        const tx = await signer.sendTransaction({
+                            to: address, 
+                            value: parseEther("5") 
+                        });
+                        
+                        alert(`Transaction Submitted! Hash: ${tx.hash}`);
+                        
+                        // Reset button
+                        launchSubmitBtn.disabled = false;
+                        launchSubmitBtn.innerHTML = originalHtml;
+                        
+                    } catch (err) {
+                        console.error("Transaction Error:", err);
+                        alert(`Transaction failed: ${err.shortMessage || err.message}`);
+                        
+                        // Reset button on error
+                        launchSubmitBtn.disabled = false;
+                        launchSubmitBtn.innerHTML = `
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 10.5L21 3"/><path d="M16 3H21V8"/><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/></svg>
+                            Launch Meme
+                        `;
+                    }
                 }
             });
         }
