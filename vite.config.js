@@ -8,8 +8,7 @@ export default defineConfig({
         main: resolve(__dirname, 'index.html'),
         markets: resolve(__dirname, 'markets.html'),
         launch: resolve(__dirname, 'launch.html'),
-        leaderboard: resolve(__dirname, 'leaderboard.html'),
-        chart: resolve(__dirname, 'chart.html')
+        leaderboard: resolve(__dirname, 'leaderboard.html')
       }
     }
   }
