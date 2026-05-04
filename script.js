@@ -615,6 +615,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 launchSubmitBtn.disabled = false;
                 launchSubmitBtn.innerHTML = `<span>Launch Meme</span>`;
             }
+        });
     }
 
 
