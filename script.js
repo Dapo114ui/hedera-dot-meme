@@ -526,17 +526,31 @@ document.addEventListener('DOMContentLoaded', () => {
     // Launch Meme Button Logic
     const launchSubmitBtn = document.querySelector('.launch-submit-btn');
     if (launchSubmitBtn) {
+        // Log button readiness
+        console.log("Launch button listener ready");
+        
         launchSubmitBtn.addEventListener('click', async (e) => {
             e.preventDefault();
-            console.log("Button clicked - Triggering wallet...");
+            console.log("Launch Meme Clicked");
             
             try {
-                // Force check for window.ethereum
-                const provider = window.ethereum || (window.hashpack ? window.hashpack : null);
+                // Detailed Provider Diagnostics
+                const hasEthereum = !!window.ethereum;
+                const hasHashPack = !!window.hashpack;
+                console.log("Provider Status - Ethereum:", hasEthereum, "HashPack:", hasHashPack);
+
+                const provider = window.ethereum || window.hashpack;
                 
                 if (!provider) {
-                    alert("Hedera Wallet (HashPack) not found! Please ensure the extension is installed and enabled.");
+                    alert("No Hedera Wallet found. Please install the HashPack Browser Extension.");
                     return;
+                }
+
+                // Identify the wallet for debugging
+                if (window.ethereum?.isHashPack || window.hashpack) {
+                    console.log("Using HashPack Provider");
+                } else {
+                    console.log("Using Generic/Metamask Provider:", window.ethereum);
                 }
 
                 launchSubmitBtn.disabled = true;
