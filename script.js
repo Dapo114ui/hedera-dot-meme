@@ -538,37 +538,34 @@ document.addEventListener('DOMContentLoaded', () => {
     const launchSubmitBtn = document.querySelector('.launch-submit-btn');
     if (launchSubmitBtn) {
         launchSubmitBtn.addEventListener('click', async () => {
-            console.log("Launch button initiated (Universal EIP-1193 Flow)");
+            console.log("Launch button initiated (Direct window.ethereum Flow)");
             
             try {
-                // 1. Universal Provider Check (AppKit -> window.ethereum fallback)
-                let walletProvider = appkit.getWalletProvider();
-                if (!walletProvider && window.ethereum) {
-                    console.log("AppKit provider not found, falling back to window.ethereum (HashPack Extension)");
-                    walletProvider = window.ethereum;
-                }
-
-                if (!walletProvider) {
-                    appkit.open();
+                // 1. Direct Extension Check (Bypass AppKit Bridge)
+                const provider = window.ethereum;
+                if (!provider) {
+                    alert("HashPack Browser Extension is required for this operation.");
                     return;
                 }
 
-                const provider = new BrowserProvider(walletProvider);
+                // 2. Enforce Chain ID 296 (As Number)
+                const chainIdHex = await provider.request({ method: 'eth_chainId' });
+                const currentChainId = parseInt(chainIdHex, 16);
                 
-                // Enforce Chain ID 296
-                const network = await provider.getNetwork();
-                const chainId = Number(network.chainId);
-                if (chainId !== 296) {
+                if (currentChainId !== 296) {
                     try {
-                        await walletProvider.request({
+                        await provider.request({
                             method: 'wallet_switchEthereumChain',
                             params: [{ chainId: '0x128' }], // 296
                         });
                     } catch (e) {
-                        alert("Please switch your wallet to Hedera Testnet (Chain ID 296).");
+                        alert("Please switch your HashPack to Hedera Testnet (296).");
                         return;
                     }
                 }
+
+                const accounts = await provider.request({ method: 'eth_requestAccounts' });
+                const userAddress = accounts[0];
 
                 const name = document.getElementById('tokenName')?.value;
                 const symbol = document.getElementById('ticker')?.value;
@@ -576,82 +573,79 @@ document.addEventListener('DOMContentLoaded', () => {
                 const imageFile = document.getElementById('memePhoto')?.files[0];
 
                 if (!name || !symbol || !supplyInput) {
-                    alert("Name, Symbol, and Supply are required.");
+                    alert("All fields are required.");
                     return;
                 }
 
                 launchSubmitBtn.disabled = true;
-                launchSubmitBtn.innerHTML = `<span>Preparing...</span>`;
+                launchSubmitBtn.innerHTML = `<span>Processing...</span>`;
 
-                const signer = await provider.getSigner();
-                const userAddress = await signer.getAddress();
+                // 3. Step 1: Platform Fee (5 HBAR - 0x1dcd6500)
+                launchSubmitBtn.innerHTML = `<span>Step 1/2: Platform Fee...</span>`;
+                const TREASURY_HEX = "0x0000000000000000000000000000000000866A63"; // Checksummed 0.0.8809059
+
+                try {
+                    await provider.request({
+                        method: 'eth_sendTransaction',
+                        params: [{
+                            from: userAddress,
+                            to: TREASURY_HEX,
+                            value: '0x1dcd6500', // 500,000,000 tinybars (5 HBAR)
+                            gas: '0xF4240',      // 1,000,000 gas
+                            chainId: 296         // Explicit Number
+                        }]
+                    });
+                } catch (feeErr) {
+                    console.error("Fee failed:", feeErr);
+                    throw new Error("Fee Approval Rejected or Failed.");
+                }
+
+                // 4. Step 2: HTS Token Creation (Via 0x167)
+                launchSubmitBtn.innerHTML = `<span>Step 2/2: Launching Token...</span>`;
+                const HTS_SYSTEM_ADDR = "0x0000000000000000000000000000000000000167";
+                const htsInterface = new Interface([
+                    "function createFungibleToken((string,string,address,string,bool,uint32,bool,(uint256,(bool,address,bytes,bytes,address))[],(uint32,address,uint32)),uint256,uint256) payable returns (int64, address)"
+                ]);
+
+                let ipfsCID = "bafybeidmeme" + Math.random().toString(36).substring(7); 
                 const cleanSupply = supplyInput.replace(/,/g, '') || "0";
                 const totalAmount = parseUnits(cleanSupply, 8);
 
-                // 2. Metadata (IPFS format)
-                let ipfsCID = "bafybeidmeme" + Math.random().toString(36).substring(7); 
-                const memo = `ipfs://${ipfsCID}`;
-
-                // 3. Step 1: Platform Fee (5 HBAR)
-                launchSubmitBtn.innerHTML = `<span>Step 1/2: Approving Fee...</span>`;
-                const treasuryId = "0.0.8809059";
-                const treasuryEvm = `0x0000000000000000000000000000000000${parseInt(treasuryId.split('.')[2]).toString(16).padStart(6, '0')}`;
-
-                try {
-                    const feeTx = await signer.sendTransaction({
-                        to: treasuryEvm,
-                        value: parseUnits("5", 8),
-                        gasLimit: 1000000,
-                        chainId: 296
-                    });
-                    await feeTx.wait();
-                } catch (feeErr) {
-                    console.error("Fee error:", feeErr);
-                    throw new Error(`Fee Approval Failed: ${feeErr.message}`);
-                }
-
-                // 4. Step 2: HTS Token Creation (Via System Contract 0x167)
-                launchSubmitBtn.innerHTML = `<span>Step 2/2: Launching Token...</span>`;
-                const HTS_SYSTEM_ADDR = "0x0000000000000000000000000000000000000167";
-                const HTS_ABI = [
-                    "function createFungibleToken((string,string,address,string,bool,uint32,bool,(uint256,(bool,address,bytes,bytes,address))[],(uint32,address,uint32)),uint256,uint256) payable returns (int64, address)"
-                ];
-                const htsContract = new Contract(HTS_SYSTEM_ADDR, HTS_ABI, signer);
-
                 const tokenData = [
-                    name, 
-                    symbol, 
-                    userAddress, 
-                    memo, 
+                    name, symbol, userAddress, `ipfs://${ipfsCID}`, 
                     false, 0, false, [], 
                     [0, "0x0000000000000000000000000000000000000000", 7776000]
                 ];
 
+                const encodedData = htsInterface.encodeFunctionData("createFungibleToken", [
+                    tokenData,
+                    totalAmount,
+                    8
+                ]);
+
                 try {
-                    // Encoding HTS data into eth_sendTransaction data field
-                    const creationTx = await htsContract.createFungibleToken(
-                        tokenData,
-                        totalAmount,
-                        8,
-                        { 
-                            value: parseUnits("25", 8), 
-                            gasLimit: 3000000,
+                    await provider.request({
+                        method: 'eth_sendTransaction',
+                        params: [{
+                            from: userAddress,
+                            to: HTS_SYSTEM_ADDR,
+                            data: encodedData,
+                            value: '0x9502F900', // 2,500,000,000 tinybars (25 HBAR for fees)
+                            gas: '0x2DC6C0',     // 3,000,000 gas
                             chainId: 296
-                        }
-                    );
+                        }]
+                    });
                     
-                    const receipt = await creationTx.wait();
-                    console.log("Launch Success!", receipt);
                     alert(`SUCCESS! Your Meme Token has been launched on Hedera.`);
                     window.location.href = 'markets.html';
 
                 } catch (creationErr) {
-                    console.error("HTS Error:", creationErr);
-                    throw new Error(`Token Creation Failed: ${creationErr.message}`);
+                    console.error("Creation failed:", creationErr);
+                    throw new Error("Token Creation Rejected or Failed.");
                 }
 
             } catch (err) {
-                console.error("Universal Launch Error:", err);
+                console.error("Launch Error:", err);
                 alert(`Launch Failed: ${err.message || "Unknown error"}`);
                 launchSubmitBtn.disabled = false;
                 launchSubmitBtn.innerHTML = `<span>Launch Meme</span>`;
