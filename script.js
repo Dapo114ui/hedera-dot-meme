@@ -4,7 +4,7 @@ window.Buffer = Buffer;
 window.process = process;
 
 import { appkit } from './wallet.js';
-import { BrowserProvider, parseUnits, Contract } from 'ethers';
+import { BrowserProvider, parseUnits, Contract, Interface } from 'ethers';
 import { 
     TokenCreateTransaction, 
     TransferTransaction, 
