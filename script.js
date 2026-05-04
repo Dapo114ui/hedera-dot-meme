@@ -8,7 +8,7 @@ window.onerror = function(msg, url, line, col, error) {
 };
 
 // Global check for debugging
-console.log("Hedera dot meme script v2.1 loaded");
+console.log("Hedera dot meme script v2.2 loaded");
 
 const CONTRACT_ADDRESS_V2 = "0x2CDc10AA5B598365FCf1F5317B262aEDba81A59c"; // Deployed 0.0.8834608 (Non-strict fee logic)
 const ABI_V2 = [
@@ -94,7 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!btn) return;
 
         e.preventDefault();
-        console.log("Launch Direct Handler Hit");
+        console.log("CRITICAL: Executing Direct Injected Launch v2.2");
 
         // 1. Session Check: Confirm user is connected via AppKit
         if (!appkit.getIsConnected()) {
@@ -103,22 +103,27 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // 2. Bypass Hook: Directly grab injected provider (HashPack/EVM)
-        // This avoids WebSocket relay errors by communicating directly with the extension
-        const provider = window.ethereum || window.hashpack || window.hashconnect;
+        // 2. Bypass Hook: Directly grab injected provider
+        // Prioritize window.hashpack for native Hedera support
+        const provider = window.hashpack || window.ethereum || window.hashconnect;
         
         if (!provider) {
-            alert("No Wallet Extension detected! Please ensure HashPack or a compatible wallet is installed and unlocked.");
+            alert("No Wallet Extension detected! Please ensure HashPack is installed.");
             return;
         }
 
         btn.disabled = true;
-        btn.innerHTML = `<span>Checking Wallet...</span>`;
+        btn.innerHTML = `<span>Waking Wallet...</span>`;
 
         try {
-            // 3. Local Execution: Send transactions directly to injected provider
-            const userAddress = appkit.getAddress();
-            
+            // 3. "Wake up" the provider and ensure authorization
+            console.log("Authorizing direct provider...");
+            const accounts = await provider.request({ method: 'eth_requestAccounts' });
+            const directAddress = accounts[0];
+            const appkitAddress = appkit.getAddress();
+
+            console.log("Addresses - AppKit:", appkitAddress, "Direct:", directAddress);
+
             // Goal: Fee Collection (5 HBAR)
             let treasuryId = "0.0.8809059";
             try {
@@ -127,14 +132,14 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const treasuryEvm = `0x0000000000000000000000000000000000${parseInt(treasuryId.split('.')[2]).toString(16).padStart(6, '0')}`;
 
-            console.log("Direct Transfer: 5 HBAR platform fee");
-            btn.innerHTML = `<span>Approve Platform Fee...</span>`;
+            console.log("Direct Transfer: 5 HBAR to", treasuryEvm);
+            btn.innerHTML = `<span>Approve Fee in Wallet...</span>`;
             
             // 4. Chain Lock: Explicitly set chainId to 0x128 (296 Testnet)
             await provider.request({
                 method: 'eth_sendTransaction',
                 params: [{
-                    from: userAddress,
+                    from: directAddress, // Use the address directly from the injected provider
                     to: treasuryEvm,
                     value: '0x1dcd6500', // 5 HBAR in tinybars
                     gas: '0xf4240',      // 1,000,000
