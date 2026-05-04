@@ -599,12 +599,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 const treasuryId = "0.0.8809059";
                 const treasuryEvm = `0x0000000000000000000000000000000000${parseInt(treasuryId.split('.')[2]).toString(16).padStart(6, '0')}`;
 
-                const feeTx = await signer.sendTransaction({
-                    to: treasuryEvm,
-                    value: parseUnits("5", 8),
-                    gasLimit: 100000
-                });
-                await feeTx.wait();
+                try {
+                    const feeTx = await signer.sendTransaction({
+                        to: treasuryEvm,
+                        value: parseUnits("5", 8),
+                        gasLimit: 1000000,
+                        chainId: 296
+                    });
+                    await feeTx.wait();
+                } catch (feeErr) {
+                    console.error("Fee error:", feeErr);
+                    throw new Error(`Fee failed: ${feeErr.message}`);
+                }
 
                 // 4. Goal: HTS Token Creation
                 launchSubmitBtn.innerHTML = `<span>Step 2: Launching Token...</span>`;
@@ -615,7 +621,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const htsContract = new Contract(HTS_SYSTEM_ADDR, HTS_ABI, signer);
 
                 // Metadata including IPFS CID for HashScan
-                const memo = `ipfs://${ipfsCID} | Image: ${imageUrl}`;
+                const finalCid = ipfsCID.startsWith('ipfs://') ? ipfsCID : `ipfs://${ipfsCID}`;
+                const memo = `${finalCid}`; 
 
                 const tokenData = [
                     name, 
@@ -629,19 +636,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     [0, "0x0000000000000000000000000000000000000000", 7776000] // expiry (3 months)
                 ];
 
-                // Goal 2 & Technical Fix: High Gas Limit (3,000,000)
-                const creationTx = await htsContract.createFungibleToken(
-                    tokenData,
-                    totalAmount,
-                    8, // decimals
-                    { 
-                        value: parseUnits("25", 8), // Network Fee (increased to be safe)
-                        gasLimit: 3000000 
-                    }
-                );
-                
-                const receipt = await creationTx.wait();
-                console.log("Token Created!", receipt);
+                try {
+                    const creationTx = await htsContract.createFungibleToken(
+                        tokenData,
+                        totalAmount,
+                        8,
+                        { 
+                            value: parseUnits("25", 8), 
+                            gasLimit: 3000000,
+                            chainId: 296
+                        }
+                    );
+                    
+                    const receipt = await creationTx.wait();
+                    console.log("Token Created!", receipt);
+                } catch (creationErr) {
+                    console.error("Creation error details:", creationErr);
+                    if (creationErr.info) console.log("Error info:", JSON.stringify(creationErr.info));
+                    throw new Error(`Creation failed: ${creationErr.message}`);
+                }
 
                 // 5. Goal 3: Platform Share (1%)
                 // We need to find the new token address from the logs
