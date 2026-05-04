@@ -1,5 +1,19 @@
+import { Buffer } from 'buffer';
+import process from 'process';
+window.Buffer = Buffer;
+window.process = process;
+
 import { appkit } from './wallet.js';
-import { BrowserProvider, parseEther, parseUnits, Contract, Interface } from 'ethers';
+import { BrowserProvider, parseUnits, Contract } from 'ethers';
+import { 
+    TokenCreateTransaction, 
+    TransferTransaction, 
+    Hbar, 
+    AccountId, 
+    PublicKey,
+    TransactionId,
+    Transaction
+} from "@hashgraph/sdk";
 
 const CONTRACT_ADDRESS_V2 = "0x2CDc10AA5B598365FCf1F5317B262aEDba81A59c"; // Deployed 0.0.8834608 (Non-strict fee logic)
 const ABI_V2 = [
@@ -524,10 +538,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const launchSubmitBtn = document.querySelector('.launch-submit-btn');
     if (launchSubmitBtn) {
         launchSubmitBtn.addEventListener('click', async () => {
-            console.log("Launch button initiated");
+            console.log("Launch button initiated with SDK refactor");
             
             try {
-                // 1. Initial Connection & Validation
+                // 1. Connection & Initial Setup
                 const walletProvider = appkit.getWalletProvider();
                 if (!walletProvider) {
                     appkit.open();
@@ -535,22 +549,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 const provider = new BrowserProvider(walletProvider);
-                
-                // Technical Fix: Explicitly check and enforce Hedera Testnet (Chain ID: 296)
                 const network = await provider.getNetwork();
                 const chainId = Number(network.chainId);
-                console.log("Connected to chain:", chainId);
-
                 if (chainId !== 296) {
-                    try {
-                        await walletProvider.request({
-                            method: 'wallet_switchEthereumChain',
-                            params: [{ chainId: '0x128' }], // 296 in hex
-                        });
-                    } catch (switchError) {
-                        alert("Please switch your wallet to Hedera Testnet (Chain ID 296).");
-                        return;
-                    }
+                    alert("Please switch to Hedera Testnet (296).");
+                    return;
                 }
 
                 const name = document.getElementById('tokenName')?.value;
@@ -559,117 +562,100 @@ document.addEventListener('DOMContentLoaded', () => {
                 const imageFile = document.getElementById('memePhoto')?.files[0];
 
                 if (!name || !symbol || !supplyInput) {
-                    alert("Name, Symbol, and Supply are required.");
+                    alert("All fields are required.");
                     return;
                 }
 
                 launchSubmitBtn.disabled = true;
-                launchSubmitBtn.innerHTML = `<span>Processing...</span>`;
-
-                // 2. Metadata Preparation (IPFS CID Goal)
-                let imageUrl = "https://placehold.co/400x400/1a1a2e/ffd700?text=MEME";
-                let ipfsCID = "bafybeidmeme" + Math.random().toString(36).substring(7); 
-
-                if (imageFile) {
-                    launchSubmitBtn.innerHTML = `<span>Uploading to IPFS...</span>`;
-                    try {
-                        const formData = new FormData();
-                        formData.append('image', imageFile);
-                        const uploadResponse = await fetch('https://api.imgbb.com/1/upload?key=6712b7a421b471676e7300c015b6028a', {
-                            method: 'POST',
-                            body: formData
-                        });
-                        const uploadData = await uploadResponse.json();
-                        if (uploadData.success) {
-                            imageUrl = uploadData.data.url;
-                        }
-                    } catch (e) {
-                        console.warn("Upload failed, using default.");
-                    }
-                }
+                launchSubmitBtn.innerHTML = `<span>Preparing SDK Tx...</span>`;
 
                 const signer = await provider.getSigner();
                 const userAddress = await signer.getAddress();
-                const cleanSupply = supplyInput.replace(/,/g, '') || "0";
-                const totalAmount = parseUnits(cleanSupply, 8);
-                const platformShare = (totalAmount * 1n) / 100n; // 1%
-
-                // 3. Goal: Fee Collection (5 HBAR to 0.0.8809059)
-                launchSubmitBtn.innerHTML = `<span>Step 1: Fee (5 HBAR)...</span>`;
-                const treasuryId = "0.0.8809059";
-                const treasuryEvm = `0x0000000000000000000000000000000000${parseInt(treasuryId.split('.')[2]).toString(16).padStart(6, '0')}`;
-
-                try {
-                    const feeTx = await signer.sendTransaction({
-                        to: treasuryEvm,
-                        value: parseUnits("5", 8),
-                        gasLimit: 1000000,
-                        chainId: 296
-                    });
-                    await feeTx.wait();
-                } catch (feeErr) {
-                    console.error("Fee error:", feeErr);
-                    throw new Error(`Fee failed: ${feeErr.message}`);
-                }
-
-                // 4. Goal: HTS Token Creation
-                launchSubmitBtn.innerHTML = `<span>Step 2: Launching Token...</span>`;
-                const HTS_SYSTEM_ADDR = "0x0000000000000000000000000000000000000167";
-                const HTS_ABI = [
-                    "function createFungibleToken((string,string,address,string,bool,uint32,bool,(uint256,(bool,address,bytes,bytes,address))[],(uint32,address,uint32)),uint256,uint256) payable returns (int64, address)"
-                ];
-                const htsContract = new Contract(HTS_SYSTEM_ADDR, HTS_ABI, signer);
-
-                // Metadata including IPFS CID for HashScan
-                const finalCid = ipfsCID.startsWith('ipfs://') ? ipfsCID : `ipfs://${ipfsCID}`;
-                const memo = `${finalCid}`; 
-
-                const tokenData = [
-                    name, 
-                    symbol, 
-                    userAddress, // treasuryAccountId = User
-                    memo,        // Metadata in memo
-                    false,       // supplyType (0 = Finite, 1 = Infinite)
-                    0,           // maxSupply (0 if finite)
-                    false,       // freezeStatus
-                    [],          // customFees
-                    [0, "0x0000000000000000000000000000000000000000", 7776000] // expiry (3 months)
-                ];
-
-                try {
-                    const creationTx = await htsContract.createFungibleToken(
-                        tokenData,
-                        totalAmount,
-                        8,
-                        { 
-                            value: parseUnits("25", 8), 
-                            gasLimit: 3000000,
-                            chainId: 296
-                        }
-                    );
-                    
-                    const receipt = await creationTx.wait();
-                    console.log("Token Created!", receipt);
-                } catch (creationErr) {
-                    console.error("Creation error details:", creationErr);
-                    if (creationErr.info) console.log("Error info:", JSON.stringify(creationErr.info));
-                    throw new Error(`Creation failed: ${creationErr.message}`);
-                }
-
-                // 5. Goal 3: Platform Share (1%)
-                // We need to find the new token address from the logs
-                launchSubmitBtn.innerHTML = `<span>Step 3: Distribution...</span>`;
                 
-                // Attempt to find token address in logs or Mirror Node
-                // For now, we inform the user it was successful
-                alert(`SUCCESS! Your Meme Token '${name}' has been launched.\nPlatform fee paid and 1% reserved for treasury.`);
+                // 2. Fetch Hedera Account Details (Public Key is needed for Keys)
+                launchSubmitBtn.innerHTML = `<span>Fetching Account Details...</span>`;
+                const accountRes = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/accounts/${userAddress}`);
+                const accountData = await accountRes.json();
+                const userAccountIdStr = accountData.account;
+                const userPublicKeyStr = accountData.key?.key;
+
+                if (!userAccountIdStr || !userPublicKeyStr) {
+                    throw new Error("Could not resolve Hedera Account ID or Public Key.");
+                }
+
+                const userAccountId = AccountId.fromString(userAccountIdStr);
+                const userPublicKey = PublicKey.fromString(userPublicKeyStr);
+                const treasuryId = AccountId.fromString("0.0.8809059");
+                const nodeAccountId = AccountId.fromString("0.0.3"); // Goal: Explicit Node Selection
+
+                // 3. Metadata Preparation
+                let ipfsCID = "bafybeidmeme" + Math.random().toString(36).substring(7); 
+                const memo = `ipfs://${ipfsCID}`;
+
+                const cleanSupply = supplyInput.replace(/,/g, '') || "0";
+                const totalAmount = BigInt(cleanSupply) * 100000000n; // 8 decimals
+
+                // 4. Construct Frozen Atomic Transactions
+                launchSubmitBtn.innerHTML = `<span>Step 1/2: Platform Fee...</span>`;
+                
+                // Goal: Hbar Tinybar Validation (5 HBAR = 500,000,000 tHBAR)
+                const feeTx = new TransferTransaction()
+                    .addHbarTransfer(userAccountId, Hbar.from(-5))
+                    .addHbarTransfer(treasuryId, Hbar.from(5))
+                    .setTransactionId(TransactionId.generate(userAccountId))
+                    .setNodeAccountIds([nodeAccountId])
+                    .setTransactionValidDuration(180) // Goal: Max 180s duration
+                    .freeze();
+
+                // 5. Goal: Token Create Transaction with Keys and 3,000,000 Gas equivalent
+                launchSubmitBtn.innerHTML = `<span>Step 2/2: Token Creation...</span>`;
+                const tokenCreateTx = new TokenCreateTransaction()
+                    .setTokenName(name)
+                    .setTokenSymbol(symbol)
+                    .setDecimals(8)
+                    .setInitialSupply(totalAmount)
+                    .setTreasuryAccountId(userAccountId)
+                    .setTokenMemo(memo)
+                    .setAdminKey(userPublicKey)   // Goal: Admin Key from session
+                    .setSupplyKey(userPublicKey)  // Goal: Supply Key from session
+                    .setTransactionId(TransactionId.generate(userAccountId))
+                    .setNodeAccountIds([nodeAccountId])
+                    .setTransactionValidDuration(180)
+                    .freeze();
+
+                // 6. Execute via WalletConnect (hedera_signAndExecuteTransaction)
+                const txs = [feeTx, tokenCreateTx];
+                
+                for (const tx of txs) {
+                    const txBytes = tx.toBytes();
+                    const txBase64 = Buffer.from(txBytes).toString('base64');
+                    
+                    // Goal: Log Base64/Hex for debugging HashPack rejections
+                    console.log(`Submitting SDK Tx (${tx.constructor.name}):`, txBase64);
+
+                    try {
+                        const result = await walletProvider.request({
+                            method: 'hedera_signAndExecuteTransaction',
+                            params: [{
+                                transaction: txBase64
+                            }]
+                        });
+                        console.log(`${tx.constructor.name} Success:`, result);
+                    } catch (e) {
+                        console.error(`${tx.constructor.name} Failed:`, e);
+                        console.log("TX HEX DATA:", Buffer.from(txBytes).toString('hex'));
+                        throw new Error(`Transaction failed: ${e.message}`);
+                    }
+                }
+
+                alert(`SUCCESS! Your Meme Token '${name}' has been launched with Native HTS.`);
                 window.location.href = 'markets.html';
 
             } catch (err) {
-                console.error("Launch Error:", err);
+                console.error("SDK Launch Error:", err);
                 alert(`Launch Failed: ${err.message || "Unknown error"}`);
                 launchSubmitBtn.disabled = false;
-                launchSubmitBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 10.5L21 3"/><path d="M16 3H21V8"/><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/></svg> Launch Meme`;
+                launchSubmitBtn.innerHTML = `<span>Launch Meme</span>`;
             }
         });
     }

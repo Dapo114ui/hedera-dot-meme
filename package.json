@@ -16,8 +16,11 @@
     "@hashgraph/sdk": "^2.81.0",
     "@reown/appkit": "^1.8.19",
     "@reown/appkit-adapter-ethers": "^1.8.19",
+    "buffer": "^6.0.3",
     "ethers": "^6.16.0",
+    "process": "^0.11.10",
     "solc": "^0.8.20",
+    "util": "^0.12.5",
     "vite": "^8.0.9"
   },
   "devDependencies": {

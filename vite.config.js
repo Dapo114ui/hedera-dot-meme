@@ -2,6 +2,19 @@ import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
 export default defineConfig({
+  define: {
+    global: 'globalThis',
+    process: {
+      env: {}
+    }
+  },
+  resolve: {
+    alias: {
+      buffer: 'buffer/',
+      process: 'process/browser',
+      util: 'util/'
+    }
+  },
   build: {
     rollupOptions: {
       input: {
