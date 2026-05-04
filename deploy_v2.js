@@ -1,13 +1,26 @@
+require('dotenv').config();
 const { ethers } = require('ethers');
 const fs = require('fs');
 
-// Treasury address provided by the user
-const TREASURY_ADDRESS = "0x9391d8058f85be7909972a57def213387b50bb11"; // 0.0.8809059
+// Treasury address pulled from environment variables
+const TREASURY_ID = process.env.TREASURY_ACCOUNT_ID;
+if (!TREASURY_ID) {
+    console.error("Error: TREASURY_ACCOUNT_ID is not defined in .env");
+    process.exit(1);
+}
+
+// Convert to EVM address for contract calls
+const TREASURY_ADDRESS = TREASURY_ID.startsWith('0.0.') 
+    ? `0x0000000000000000000000000000000000${parseInt(TREASURY_ID.split('.')[2]).toString(16).padStart(6, '0')}`
+    : TREASURY_ID;
 
 async function main() {
     // 1. Setup Provider & Signer
-    // WARNING: Do not store your private key in code files!
-    const PRIVATE_KEY = "PASTE_PRIVATE_KEY_HERE"; 
+    const PRIVATE_KEY = process.env.TREASURY_PRIVATE_KEY;
+    if (!PRIVATE_KEY || PRIVATE_KEY === 'PASTE_YOUR_NEW_PRIVATE_KEY_HERE') {
+        console.error("Error: TREASURY_PRIVATE_KEY is not defined or is a placeholder in .env");
+        process.exit(1);
+    }
     const provider = new ethers.JsonRpcProvider('https://testnet.hashio.io/api');
     const wallet = new ethers.Wallet(PRIVATE_KEY, provider);
 

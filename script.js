@@ -586,7 +586,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 // 1. Pay the 5 HBAR Platform Fee (Standard Transfer Fix)
                 launchSubmitBtn.innerHTML = `<span>Step 1: Processing Platform Fee...</span>`;
                 
-                const treasuryId = import.meta.env.VITE_TREASURY_ACCOUNT_ID || "0.0.8809059";
+                const treasuryId = import.meta.env.VITE_TREASURY_ACCOUNT_ID;
+                if (!treasuryId) {
+                    throw new Error("VITE_TREASURY_ACCOUNT_ID is not defined in .env");
+                }
                 // Convert to Long-Zero EVM address if it's a Hedera ID
                 const treasuryEvm = treasuryId.startsWith('0.0.') 
                     ? `0x0000000000000000000000000000000000${parseInt(treasuryId.split('.')[2]).toString(16).padStart(6, '0')}`

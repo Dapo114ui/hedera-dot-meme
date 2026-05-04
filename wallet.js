@@ -3,7 +3,10 @@ import { EthersAdapter } from '@reown/appkit-adapter-ethers';
 import { hederaTestnet } from '@reown/appkit/networks';
 
 // 1. Get your Project ID from environment variables
-const projectId = import.meta.env.VITE_REOWN_PROJECT_ID || '56b4ff1bce8f0f39d1087b98b8de75fe'; 
+const projectId = import.meta.env.VITE_REOWN_PROJECT_ID; 
+if (!projectId) {
+  console.warn("VITE_REOWN_PROJECT_ID is not defined in .env");
+}
 
 // 2. Define AppKit Metadata
 const metadata = {
