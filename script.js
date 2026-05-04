@@ -8,7 +8,7 @@ window.onerror = function(msg, url, line, col, error) {
 };
 
 // Global check for debugging
-console.log("Hedera dot meme script v2.2 loaded");
+console.log("Hedera dot meme script v2.3 loaded");
 
 const CONTRACT_ADDRESS_V2 = "0x2CDc10AA5B598365FCf1F5317B262aEDba81A59c"; // Deployed 0.0.8834608 (Non-strict fee logic)
 const ABI_V2 = [
@@ -94,35 +94,34 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!btn) return;
 
         e.preventDefault();
-        console.log("CRITICAL: Executing Direct Injected Launch v2.2");
+        console.log("CRITICAL: Executing Direct Injected Launch v2.3");
 
-        // 1. Session Check: Confirm user is connected via AppKit
+        // 1. Session Check
         if (!appkit.getIsConnected()) {
-            console.log("Not connected via AppKit, opening modal");
             appkit.open();
             return;
         }
 
-        // 2. Bypass Hook: Directly grab injected provider
-        // Prioritize window.hashpack for native Hedera support
+        // 2. Bypass Hook: Direct Injected Provider
         const provider = window.hashpack || window.ethereum || window.hashconnect;
         
         if (!provider) {
-            alert("No Wallet Extension detected! Please ensure HashPack is installed.");
+            alert("No Wallet Extension detected! Please ensure HashPack is active.");
             return;
         }
 
         btn.disabled = true;
-        btn.innerHTML = `<span>Waking Wallet...</span>`;
+        btn.innerHTML = `<span>Connecting to Wallet...</span>`;
 
         try {
-            // 3. "Wake up" the provider and ensure authorization
-            console.log("Authorizing direct provider...");
-            const accounts = await provider.request({ method: 'eth_requestAccounts' });
-            const directAddress = accounts[0];
-            const appkitAddress = appkit.getAddress();
-
-            console.log("Addresses - AppKit:", appkitAddress, "Direct:", directAddress);
+            // 3. Use Ethers for reliable interaction
+            console.log("Wrapping provider with Ethers...");
+            const ethersProvider = new BrowserProvider(provider);
+            const signer = await ethersProvider.getSigner();
+            const userAddress = await signer.getAddress();
+            
+            console.log("Wallet Connected:", userAddress);
+            alert("Wallet Detected: " + userAddress);
 
             // Goal: Fee Collection (5 HBAR)
             let treasuryId = "0.0.8809059";
@@ -132,20 +131,59 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const treasuryEvm = `0x0000000000000000000000000000000000${parseInt(treasuryId.split('.')[2]).toString(16).padStart(6, '0')}`;
 
-            console.log("Direct Transfer: 5 HBAR to", treasuryEvm);
-            btn.innerHTML = `<span>Approve Fee in Wallet...</span>`;
+            console.log("Step 1: 5 HBAR Fee to", treasuryEvm);
+            btn.innerHTML = `<span>Approve 5 HBAR Fee...</span>`;
             
-            // 4. Chain Lock: Explicitly set chainId to 0x128 (296 Testnet)
-            await provider.request({
-                method: 'eth_sendTransaction',
-                params: [{
-                    from: directAddress, // Use the address directly from the injected provider
-                    to: treasuryEvm,
-                    value: '0x1dcd6500', // 5 HBAR in tinybars
-                    gas: '0xf4240',      // 1,000,000
-                    chainId: '0x128'     // 296
-                }]
+            const feeTx = await signer.sendTransaction({
+                to: treasuryEvm,
+                value: parseUnits("5", 8), // 5 HBAR (8 decimals in HTS/EVM context for Hedera)
+                gasLimit: 1000000
             });
+            
+            console.log("Fee Tx Sent:", feeTx.hash);
+            btn.innerHTML = `<span>Waiting for Confirmation...</span>`;
+            await feeTx.wait();
+
+            // Goal: HTS Token Creation
+            console.log("Step 2: HTS Token Creation");
+            btn.innerHTML = `<span>Approving Meme Launch...</span>`;
+            
+            const name = document.getElementById('tokenName')?.value || "My Meme";
+            const symbol = document.getElementById('ticker')?.value || "MEME";
+            const supplyInput = document.getElementById('initialSupply')?.value || "1000000000";
+            const cleanSupply = supplyInput.replace(/,/g, '') || "0";
+            const totalAmount = parseUnits(cleanSupply, 8);
+
+            const htsInterface = new Interface([
+                "function createFungibleToken((string,string,address,string,bool,uint32,bool,(uint256,(bool,address,bytes,bytes,address))[],(uint32,address,uint32)),uint256,uint256) payable returns (int64, address)"
+            ]);
+
+            const memo = `ipfs://bafybeidmeme${Math.random().toString(36).substring(7)}`;
+            const tokenData = [
+                name, symbol, userAddress, memo, 
+                false, 0, false, [], 
+                [0, "0x0000000000000000000000000000000000000000", 7776000]
+            ];
+
+            const encodedData = htsInterface.encodeFunctionData("createFungibleToken", [
+                tokenData,
+                totalAmount,
+                8
+            ]);
+
+            const createTx = await signer.sendTransaction({
+                to: "0x0000000000000000000000000000000000000167",
+                data: encodedData,
+                value: parseUnits("25", 8), // 25 HBAR creation fee
+                gasLimit: 3000000
+            });
+
+            console.log("Creation Tx Sent:", createTx.hash);
+            btn.innerHTML = `<span>Finalizing...</span>`;
+            await createTx.wait();
+
+            alert(`SUCCESS! Your Meme Token is live.`);
+            window.location.href = 'markets.html';
 
             // Goal: HTS Token Creation
             console.log("Direct HTS Creation: 25 HBAR fee");
