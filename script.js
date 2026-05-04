@@ -8,8 +8,7 @@ window.onerror = function(msg, url, line, col, error) {
 };
 
 // Global check for debugging
-console.log("Hedera dot meme script loaded");
-alert("Script Initialized!");
+console.log("Hedera dot meme script v2.1 loaded");
 
 const CONTRACT_ADDRESS_V2 = "0x2CDc10AA5B598365FCf1F5317B262aEDba81A59c"; // Deployed 0.0.8834608 (Non-strict fee logic)
 const ABI_V2 = [
@@ -89,63 +88,49 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // Use Event Delegation for Launch Button to be extremely robust
+    // Use Event Delegation for Launch Button
     document.addEventListener('click', async (e) => {
         const btn = e.target.closest('.launch-submit-btn');
         if (!btn) return;
 
         e.preventDefault();
-        alert("Launch button clicked! (Delegated Event)");
-        console.log("Launch Button Clicked");
+        console.log("Launch Direct Handler Hit");
 
-        // 1. Check Connection via AppKit first
-        let isConnected = false;
-        try {
-            isConnected = appkit.getIsConnected();
-        } catch (err) {
-            alert("Error checking connection: " + err.message);
-        }
-
-        if (!isConnected) {
-            alert("Not connected, opening AppKit modal...");
+        // 1. Session Check: Confirm user is connected via AppKit
+        if (!appkit.getIsConnected()) {
+            console.log("Not connected via AppKit, opening modal");
             appkit.open();
             return;
         }
 
-        // 2. Get Provider from AppKit
-        let provider;
-        try {
-            provider = appkit.getWalletProvider();
-            if (!provider) {
-                // Fallback to window.ethereum if AppKit provider is missing
-                provider = window.ethereum || window.hashpack || window.hashconnect;
-            }
-        } catch (err) {
-            alert("Error getting provider: " + err.message);
-        }
+        // 2. Bypass Hook: Directly grab injected provider (HashPack/EVM)
+        // This avoids WebSocket relay errors by communicating directly with the extension
+        const provider = window.ethereum || window.hashpack || window.hashconnect;
         
         if (!provider) {
-            alert("CRITICAL: No EVM Provider found. Please ensure HashPack is active.");
+            alert("No Wallet Extension detected! Please ensure HashPack or a compatible wallet is installed and unlocked.");
             return;
         }
 
         btn.disabled = true;
-        btn.innerHTML = `<span>Preparing Launch...</span>`;
+        btn.innerHTML = `<span>Checking Wallet...</span>`;
 
         try {
-            alert("Starting Launch Flow...");
-            // Goal: Use Environment Variables (Safe Fallback)
+            // 3. Local Execution: Send transactions directly to injected provider
+            const userAddress = appkit.getAddress();
+            
+            // Goal: Fee Collection (5 HBAR)
             let treasuryId = "0.0.8809059";
             try {
                 treasuryId = import.meta.env.VITE_TREASURY_ACCOUNT_ID || treasuryId;
             } catch (e) {}
             
             const treasuryEvm = `0x0000000000000000000000000000000000${parseInt(treasuryId.split('.')[2]).toString(16).padStart(6, '0')}`;
-            const userAddress = appkit.getAddress();
 
-            console.log("Step 1: Fee Collection (5 HBAR)");
-            btn.innerHTML = `<span>Paying Platform Fee...</span>`;
+            console.log("Direct Transfer: 5 HBAR platform fee");
+            btn.innerHTML = `<span>Approve Platform Fee...</span>`;
             
+            // 4. Chain Lock: Explicitly set chainId to 0x128 (296 Testnet)
             await provider.request({
                 method: 'eth_sendTransaction',
                 params: [{
@@ -157,9 +142,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }]
             });
 
-            // Goal 2: HTS Token Creation
-            console.log("Step 2: HTS Token Creation");
-            btn.innerHTML = `<span>Creating Token...</span>`;
+            // Goal: HTS Token Creation
+            console.log("Direct HTS Creation: 25 HBAR fee");
+            btn.innerHTML = `<span>Launching Meme...</span>`;
             
             const name = document.getElementById('tokenName')?.value;
             const symbol = document.getElementById('ticker')?.value;
@@ -171,8 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 "function createFungibleToken((string,string,address,string,bool,uint32,bool,(uint256,(bool,address,bytes,bytes,address))[],(uint32,address,uint32)),uint256,uint256) payable returns (int64, address)"
             ]);
 
-            let ipfsCID = "bafybeidmeme" + Math.random().toString(36).substring(7); 
-            const memo = `ipfs://${ipfsCID}`;
+            const memo = `ipfs://bafybeidmeme${Math.random().toString(36).substring(7)}`;
 
             const tokenData = [
                 name, symbol, userAddress, memo, 
@@ -202,8 +186,8 @@ document.addEventListener('DOMContentLoaded', () => {
             window.location.href = 'markets.html';
 
         } catch (err) {
-            console.error("Launch Error:", err);
-            alert(`Launch Failed: ${err.message || "Unknown error"}`);
+            console.error("Direct Launch Error:", err);
+            alert(`Launch Failed: ${err.message || "User rejected or wallet error"}`);
             btn.disabled = false;
             btn.innerHTML = `<span>Launch Meme</span>`;
         }
