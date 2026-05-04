@@ -538,31 +538,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const launchSubmitBtn = document.querySelector('.launch-submit-btn');
     if (launchSubmitBtn) {
         launchSubmitBtn.addEventListener('click', async () => {
-            console.log("Launch button initiated (Direct window.ethereum Flow)");
+            console.log("Force-Pop sequence initiated");
             
             try {
-                // 1. Direct Extension Check (Bypass AppKit Bridge)
-                const provider = window.ethereum;
+                // 1. Force Raw Injected Provider (Bypass AppKit Bridge)
+                const provider = window.ethereum || window.hashpack;
                 if (!provider) {
-                    alert("HashPack Browser Extension is required for this operation.");
+                    alert("HashPack Extension not detected. Please install the extension to launch.");
                     return;
                 }
 
-                // 2. Enforce Chain ID 296 (As Number)
-                const chainIdHex = await provider.request({ method: 'eth_chainId' });
-                const currentChainId = parseInt(chainIdHex, 16);
-                
-                if (currentChainId !== 296) {
-                    try {
-                        await provider.request({
-                            method: 'wallet_switchEthereumChain',
-                            params: [{ chainId: '0x128' }], // 296
-                        });
-                    } catch (e) {
-                        alert("Please switch your HashPack to Hedera Testnet (296).");
-                        return;
-                    }
-                }
+                // UI feedback: Signal to user that the pop-up is triggered
+                launchSubmitBtn.disabled = true;
+                launchSubmitBtn.innerHTML = `<span>Check Your Wallet...</span>`;
 
                 const accounts = await provider.request({ method: 'eth_requestAccounts' });
                 const userAddress = accounts[0];
@@ -570,38 +558,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 const name = document.getElementById('tokenName')?.value;
                 const symbol = document.getElementById('ticker')?.value;
                 const supplyInput = document.getElementById('initialSupply')?.value;
-                const imageFile = document.getElementById('memePhoto')?.files[0];
 
                 if (!name || !symbol || !supplyInput) {
-                    alert("All fields are required.");
+                    alert("Please fill all fields.");
+                    launchSubmitBtn.disabled = false;
+                    launchSubmitBtn.innerHTML = `<span>Launch Meme</span>`;
                     return;
                 }
 
-                launchSubmitBtn.disabled = true;
-                launchSubmitBtn.innerHTML = `<span>Processing...</span>`;
-
-                // 3. Step 1: Platform Fee (5 HBAR - 0x1dcd6500)
-                launchSubmitBtn.innerHTML = `<span>Step 1/2: Platform Fee...</span>`;
-                const TREASURY_HEX = "0x0000000000000000000000000000000000866A63"; // Checksummed 0.0.8809059
-
+                // 2. Step 1: Fee (Strict Hex Formatting)
+                const TREASURY_HEX = "0x0000000000000000000000000000000000866A63";
+                
                 try {
                     await provider.request({
                         method: 'eth_sendTransaction',
                         params: [{
                             from: userAddress,
                             to: TREASURY_HEX,
-                            value: '0x1dcd6500', // 500,000,000 tinybars (5 HBAR)
-                            gas: '0xF4240',      // 1,000,000 gas
-                            chainId: 296         // Explicit Number
+                            value: '0x1dcd6500', // 5 HBAR in tinybars
+                            gas: '0xf4240',      // 1,000,000 gas
+                            chainId: '0x128'     // 296 in Hex
                         }]
                     });
                 } catch (feeErr) {
-                    console.error("Fee failed:", feeErr);
-                    throw new Error("Fee Approval Rejected or Failed.");
+                    console.error("Fee failure:", feeErr);
+                    throw new Error("Wallet rejected the fee or connection failed.");
                 }
 
-                // 4. Step 2: HTS Token Creation (Via 0x167)
-                launchSubmitBtn.innerHTML = `<span>Step 2/2: Launching Token...</span>`;
+                // 3. Step 2: Token Creation (Via 0x167 Interface)
+                launchSubmitBtn.innerHTML = `<span>Creating Token (Final Check)...</span>`;
                 const HTS_SYSTEM_ADDR = "0x0000000000000000000000000000000000000167";
                 const htsInterface = new Interface([
                     "function createFungibleToken((string,string,address,string,bool,uint32,bool,(uint256,(bool,address,bytes,bytes,address))[],(uint32,address,uint32)),uint256,uint256) payable returns (int64, address)"
@@ -630,22 +615,22 @@ document.addEventListener('DOMContentLoaded', () => {
                             from: userAddress,
                             to: HTS_SYSTEM_ADDR,
                             data: encodedData,
-                            value: '0x9502F900', // 2,500,000,000 tinybars (25 HBAR for fees)
-                            gas: '0x2DC6C0',     // 3,000,000 gas
-                            chainId: 296
+                            value: '0x9502F900', // 25 HBAR
+                            gas: '0x2dc6c0',     // 3,000,000 gas
+                            chainId: '0x128'
                         }]
                     });
                     
-                    alert(`SUCCESS! Your Meme Token has been launched on Hedera.`);
+                    alert(`SUCCESS! Your Meme Token is live.`);
                     window.location.href = 'markets.html';
 
                 } catch (creationErr) {
-                    console.error("Creation failed:", creationErr);
-                    throw new Error("Token Creation Rejected or Failed.");
+                    console.error("HTS failure:", creationErr);
+                    throw new Error("Token Creation failed or was rejected.");
                 }
 
             } catch (err) {
-                console.error("Launch Error:", err);
+                console.error("Force-Pop Error:", err);
                 alert(`Launch Failed: ${err.message || "Unknown error"}`);
                 launchSubmitBtn.disabled = false;
                 launchSubmitBtn.innerHTML = `<span>Launch Meme</span>`;
