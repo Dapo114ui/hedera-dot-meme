@@ -1,19 +1,8 @@
-import { Buffer } from 'buffer';
-import process from 'process';
-window.Buffer = Buffer;
-window.process = process;
-
 import { appkit } from './wallet.js';
 import { BrowserProvider, parseUnits, Contract, Interface } from 'ethers';
-import { 
-    TokenCreateTransaction, 
-    TransferTransaction, 
-    Hbar, 
-    AccountId, 
-    PublicKey,
-    TransactionId,
-    Transaction
-} from "@hashgraph/sdk";
+
+// Global check for debugging
+console.log("Hedera dot meme script loaded");
 
 const CONTRACT_ADDRESS_V2 = "0x2CDc10AA5B598365FCf1F5317B262aEDba81A59c"; // Deployed 0.0.8834608 (Non-strict fee logic)
 const ABI_V2 = [
@@ -537,18 +526,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Launch Meme Button Logic
     const launchSubmitBtn = document.querySelector('.launch-submit-btn');
     if (launchSubmitBtn) {
-        launchSubmitBtn.addEventListener('click', async () => {
-            console.log("Force-Pop sequence initiated");
+        launchSubmitBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            console.log("Button clicked - Triggering wallet...");
             
             try {
-                // 1. Force Raw Injected Provider (Bypass AppKit Bridge)
-                const provider = window.ethereum || window.hashpack;
+                // Force check for window.ethereum
+                const provider = window.ethereum || (window.hashpack ? window.hashpack : null);
+                
                 if (!provider) {
-                    alert("HashPack Extension not detected. Please install the extension to launch.");
+                    alert("Hedera Wallet (HashPack) not found! Please ensure the extension is installed and enabled.");
                     return;
                 }
 
-                // UI feedback: Signal to user that the pop-up is triggered
                 launchSubmitBtn.disabled = true;
                 launchSubmitBtn.innerHTML = `<span>Check Your Wallet...</span>`;
 
