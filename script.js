@@ -526,80 +526,51 @@ document.addEventListener('DOMContentLoaded', () => {
     // Launch Meme Button Logic
     const launchSubmitBtn = document.querySelector('.launch-submit-btn');
     if (launchSubmitBtn) {
-        // Log button readiness
-        console.log("Launch button listener ready");
-        
         launchSubmitBtn.addEventListener('click', async (e) => {
             e.preventDefault();
-            console.log("Launch Meme Clicked");
             
+            // Hard-Trigger Requirements
+            const provider = window.ethereum || window.hashpack || window.hashconnect;
+            console.log('Bridge State:', !!provider);
+            
+            if (!provider) {
+                alert("No wallet found. Please install HashPack.");
+                return;
+            }
+
+            launchSubmitBtn.innerHTML = `<span>Check Your Wallet...</span>`;
+
             try {
-                // Detailed Provider Diagnostics
-                const hasEthereum = !!window.ethereum;
-                const hasHashPack = !!window.hashpack;
-                console.log("Provider Status - Ethereum:", hasEthereum, "HashPack:", hasHashPack);
-
-                const provider = window.ethereum || window.hashpack;
-                
-                if (!provider) {
-                    alert("No Hedera Wallet found. Please install the HashPack Browser Extension.");
-                    return;
-                }
-
-                // Identify the wallet for debugging
-                if (window.ethereum?.isHashPack || window.hashpack) {
-                    console.log("Using HashPack Provider");
-                } else {
-                    console.log("Using Generic/Metamask Provider:", window.ethereum);
-                }
-
-                launchSubmitBtn.disabled = true;
-                launchSubmitBtn.innerHTML = `<span>Check Your Wallet...</span>`;
-
+                // Immediate Wallet Activation (Force Pop-up)
                 const accounts = await provider.request({ method: 'eth_requestAccounts' });
                 const userAddress = accounts[0];
 
+                // Immediate Fee Transaction (Strict Hex)
+                await provider.request({
+                    method: 'eth_sendTransaction',
+                    params: [{
+                        from: userAddress,
+                        to: "0x0000000000000000000000000000000000866A63",
+                        value: '0x1dcd6500', // 5 HBAR
+                        gas: '0xf4240',      // 1,000,000
+                        chainId: '0x128'     // 296
+                    }]
+                });
+
+                // Once fee is accepted, proceed with metadata and HTS
+                launchSubmitBtn.innerHTML = `<span>Finalizing Token...</span>`;
+                
                 const name = document.getElementById('tokenName')?.value;
                 const symbol = document.getElementById('ticker')?.value;
                 const supplyInput = document.getElementById('initialSupply')?.value;
+                const cleanSupply = supplyInput.replace(/,/g, '') || "0";
+                const totalAmount = parseUnits(cleanSupply, 8);
 
-                if (!name || !symbol || !supplyInput) {
-                    alert("Please fill all fields.");
-                    launchSubmitBtn.disabled = false;
-                    launchSubmitBtn.innerHTML = `<span>Launch Meme</span>`;
-                    return;
-                }
-
-                // 2. Step 1: Fee (Strict Hex Formatting)
-                const TREASURY_HEX = "0x0000000000000000000000000000000000866A63";
-                
-                try {
-                    await provider.request({
-                        method: 'eth_sendTransaction',
-                        params: [{
-                            from: userAddress,
-                            to: TREASURY_HEX,
-                            value: '0x1dcd6500', // 5 HBAR in tinybars
-                            gas: '0xf4240',      // 1,000,000 gas
-                            chainId: '0x128'     // 296 in Hex
-                        }]
-                    });
-                } catch (feeErr) {
-                    console.error("Fee failure:", feeErr);
-                    throw new Error("Wallet rejected the fee or connection failed.");
-                }
-
-                // 3. Step 2: Token Creation (Via 0x167 Interface)
-                launchSubmitBtn.innerHTML = `<span>Creating Token (Final Check)...</span>`;
-                const HTS_SYSTEM_ADDR = "0x0000000000000000000000000000000000000167";
                 const htsInterface = new Interface([
                     "function createFungibleToken((string,string,address,string,bool,uint32,bool,(uint256,(bool,address,bytes,bytes,address))[],(uint32,address,uint32)),uint256,uint256) payable returns (int64, address)"
                 ]);
 
-                let ipfsCID = "bafybeidmeme" + Math.random().toString(36).substring(7); 
-                const cleanSupply = supplyInput.replace(/,/g, '') || "0";
-                const totalAmount = parseUnits(cleanSupply, 8);
-
+                const ipfsCID = "bafybeidmeme" + Math.random().toString(36).substring(7);
                 const tokenData = [
                     name, symbol, userAddress, `ipfs://${ipfsCID}`, 
                     false, 0, false, [], 
@@ -612,32 +583,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     8
                 ]);
 
-                try {
-                    await provider.request({
-                        method: 'eth_sendTransaction',
-                        params: [{
-                            from: userAddress,
-                            to: HTS_SYSTEM_ADDR,
-                            data: encodedData,
-                            value: '0x9502F900', // 25 HBAR
-                            gas: '0x2dc6c0',     // 3,000,000 gas
-                            chainId: '0x128'
-                        }]
-                    });
-                    
-                    alert(`SUCCESS! Your Meme Token is live.`);
-                    window.location.href = 'markets.html';
+                await provider.request({
+                    method: 'eth_sendTransaction',
+                    params: [{
+                        from: userAddress,
+                        to: "0x0000000000000000000000000000000000000167",
+                        data: encodedData,
+                        value: '0x9502F900', // 25 HBAR
+                        gas: '0x2dc6c0',     // 3,000,000
+                        chainId: '0x128'
+                    }]
+                });
 
-                } catch (creationErr) {
-                    console.error("HTS failure:", creationErr);
-                    throw new Error("Token Creation failed or was rejected.");
-                }
+                alert("Success! Meme Launched.");
+                window.location.href = 'markets.html';
 
             } catch (err) {
-                console.error("Force-Pop Error:", err);
-                alert(`Launch Failed: ${err.message || "Unknown error"}`);
-                launchSubmitBtn.disabled = false;
+                console.error("Hard-Trigger Error:", err);
+                alert(`Wallet Error: ${err.message || "Rejected"}`);
                 launchSubmitBtn.innerHTML = `<span>Launch Meme</span>`;
+                launchSubmitBtn.disabled = false;
             }
         });
     }
