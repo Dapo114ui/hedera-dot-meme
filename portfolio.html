@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio - Hedera.Meme</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="overlay-gradient" style="height: 30vh; opacity: 0.5;"></div>
+    <header class="navbar">
+        <div class="logo-container">
+            <svg class="logo-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M11 2L12.5 8.5L19 10L12.5 11.5L11 18L9.5 11.5L3 10L9.5 8.5L11 2Z" fill="#FFD700" stroke="#FFD700" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="18" cy="18" r="2" fill="#FFD700"/>
+                <circle cx="6" cy="19" r="1.5" fill="#FFD700"/>
+            </svg>
+            <a href="index.html" class="logo-text" style="text-decoration: none;">Hedera.Meme</a>
+        </div>
+        
+        <nav class="nav-links">
+            <a href="launch.html" class="nav-link">Launch Meme</a>
+            <a href="markets.html" class="nav-link">Markets</a>
+            <a href="leaderboard.html" class="nav-link">Leaderboard</a>
+            <a href="portfolio.html" class="nav-link active">Portfolio</a>
+        </nav>
+        
+        <button id="custom-wallet-btn" class="connect-btn">Connect Wallet</button>
+    </header>
+
+    <main class="markets-container">
+        <div class="markets-header" style="align-items: center; gap: 25px;">
+            <!-- Profile Section -->
+            <div class="profile-section" id="profile-area" style="display: none;">
+                <div class="profile-avatar-container" id="pfp-upload-btn" style="position: relative; width: 100px; height: 100px; cursor: pointer; group;">
+                    <div id="pfp-display" style="width: 100%; height: 100%; border-radius: 50%; background: rgba(255, 215, 0, 0.1); border: 2px solid rgba(255, 215, 0, 0.3); display: flex; align-items: center; justify-content: center; overflow: hidden; transition: all 0.3s ease;">
+                        <svg id="pfp-placeholder" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#FFD700" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                        <img id="pfp-img" src="" style="display: none; width: 100%; height: 100%; object-fit: cover;">
+                    </div>
+                    <div class="avatar-edit-overlay" style="position: absolute; bottom: 0; right: 0; background: #FFD700; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 3px solid #121212;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="3"><path d="M12 5v14M5 12h14"></path></svg>
+                    </div>
+                    <input type="file" id="pfp-input" accept="image/*" style="display: none;">
+                </div>
+            </div>
+
+            <div class="markets-title-area">
+                <h1 class="markets-title">My Portfolio</h1>
+                <p class="markets-subtitle" id="portfolio-subtitle">Memes you've launched into the wild</p>
+            </div>
+        </div>
+
+        <div id="portfolio-status" style="text-align: center; padding: 40px; display: none;">
+            <p style="opacity: 0.7; margin-bottom: 20px;">Please connect your wallet to view your portfolio.</p>
+            <button class="primary-btn" onclick="appkit.open()" style="margin: 0 auto;">Connect Wallet</button>
+        </div>
+
+        <div class="tokens-grid" id="portfolio-grid">
+            <!-- Tokens will be injected here -->
+        </div>
+    </main>
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>

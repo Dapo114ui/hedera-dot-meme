@@ -28,7 +28,7 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" class="nav-icon"><path d="M8 21H16M12 17V21M7 4H17M7 4C7 8.418 8.418 12 12 12M17 4C17 8.418 15.582 12 12 12M7 4H5C3.895 4 3 4.895 3 6C3 8.209 4.791 10 7 10H7C8.418 10 10 8.418 10 6M17 4H19C20.105 4 21 4.895 21 6C21 8.209 19.209 10 17 10H17C15.582 10 14 8.418 14 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 Leaderboard
             </a>
-            <a href="#" class="nav-link">Portfolio</a>
+            <a href="portfolio.html" class="nav-link">Portfolio</a>
         </nav>
         
         <button id="custom-wallet-btn" class="connect-btn">Connect Wallet</button>
@@ -44,103 +44,25 @@
         </div>
 
         <div class="leaderboard-grid">
-            <!-- Left Column: Top Traders -->
+            <!-- Left Column: Top Creators -->
             <div class="leaderboard-column">
                 <div class="column-header">
-                    <h3>🏆 Top Traders</h3>
+                    <h3>👑 Top Creators</h3>
                 </div>
-                <div class="list-container">
-                    <!-- Item 1 (Highlighted) -->
-                    <div class="list-item highlight-gold">
-                        <div class="item-rank"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FFD700" stroke-width="2"><path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5z"/><path d="M5 20h14"/></svg></div>
-                        <div class="item-avatar"><span style="font-size:1.5rem">🦈</span></div>
-                        <div class="item-info">
-                            <div class="item-primary">0x7a3...f92d</div>
-                            <div class="item-secondary">1247 trades</div>
-                        </div>
-                        <div class="item-stats text-right">
-                            <div class="stat-primary text-green">+$892,421</div>
-                            <div class="stat-secondary text-green">+2,847%</div>
-                        </div>
-                    </div>
-                    
-                    <!-- Item 2 -->
-                    <div class="list-item">
-                        <div class="item-rank"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C0C0C0" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.4 12.8L18 20l-6-2.5L6 20l2.6-7.2"/></svg></div>
-                        <div class="item-avatar"><span style="font-size:1.5rem">🐋</span></div>
-                        <div class="item-info">
-                            <div class="item-primary">0x4b2...a81c</div>
-                            <div class="item-secondary">892 trades</div>
-                        </div>
-                        <div class="item-stats text-right">
-                            <div class="stat-primary text-green">+$654,892</div>
-                            <div class="stat-secondary text-green">+1,923%</div>
-                        </div>
-                    </div>
-                    
-                    <!-- Item 3 -->
-                    <div class="list-item">
-                        <div class="item-rank"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#CD7F32" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.4 12.8L18 20l-6-2.5L6 20l2.6-7.2"/></svg></div>
-                        <div class="item-avatar"><span style="font-size:1.5rem">🦁</span></div>
-                        <div class="item-info">
-                            <div class="item-primary">0x9f1...e23b</div>
-                            <div class="item-secondary">1543 trades</div>
-                        </div>
-                        <div class="item-stats text-right">
-                            <div class="stat-primary text-green">+$521,347</div>
-                            <div class="stat-secondary text-green">+1,456%</div>
-                        </div>
-                    </div>
+                <div class="list-container" id="top-creators-list">
+                    <!-- Dynamic content will be injected here -->
+                    <div style="text-align: center; padding: 40px; opacity: 0.6;">Loading creators...</div>
                 </div>
             </div>
 
-            <!-- Right Column: Top Gainers -->
+            <!-- Right Column: Top Memes (By Holders) -->
             <div class="leaderboard-column">
                 <div class="column-header">
-                    <h3><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg> Top Gainers (7D)</h3>
+                    <h3>💎 Top Memes (By Holders)</h3>
                 </div>
-                <div class="list-container">
-                    <!-- Item 1 (Highlighted) -->
-                    <div class="list-item highlight-green">
-                        <div class="item-rank"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FFD700" stroke-width="2"><path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5z"/><path d="M5 20h14"/></svg></div>
-                        <div class="item-avatar-square"><span style="font-size:1.5rem">🐸</span></div>
-                        <div class="item-info">
-                            <div class="item-primary">PEPE CLASSIC</div>
-                            <div class="item-secondary">$PEPEC</div>
-                        </div>
-                        <div class="item-stats text-right">
-                            <div class="stat-primary text-green">+8,942%</div>
-                            <div class="stat-secondary">Vol: $89.4M</div>
-                        </div>
-                    </div>
-                    
-                    <!-- Item 2 -->
-                    <div class="list-item">
-                        <div class="item-rank"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#C0C0C0" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.4 12.8L18 20l-6-2.5L6 20l2.6-7.2"/></svg></div>
-                        <div class="item-avatar-square"><span style="font-size:1.5rem">🥹</span></div>
-                        <div class="item-info">
-                            <div class="item-primary">WOJAK</div>
-                            <div class="item-secondary">$WOJAK</div>
-                        </div>
-                        <div class="item-stats text-right">
-                            <div class="stat-primary text-green">+5,621%</div>
-                            <div class="stat-secondary">Vol: $45.2M</div>
-                        </div>
-                    </div>
-                    
-                    <!-- Item 3 -->
-                    <div class="list-item">
-                        <div class="item-rank"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#CD7F32" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.4 12.8L18 20l-6-2.5L6 20l2.6-7.2"/></svg></div>
-                        <div class="item-avatar-square"><span style="font-size:1.5rem">💪</span></div>
-                        <div class="item-info">
-                            <div class="item-primary">CHAD TOKEN</div>
-                            <div class="item-secondary">$CHAD</div>
-                        </div>
-                        <div class="item-stats text-right">
-                            <div class="stat-primary text-green">+4,127%</div>
-                            <div class="stat-secondary">Vol: $32.1M</div>
-                        </div>
-                    </div>
+                <div class="list-container" id="top-memes-list">
+                    <!-- Dynamic content will be injected here -->
+                    <div style="text-align: center; padding: 40px; opacity: 0.6;">Loading memes...</div>
                 </div>
             </div>
         </div>

@@ -1,9 +1,9 @@
 import { createAppKit } from '@reown/appkit';
 import { EthersAdapter } from '@reown/appkit-adapter-ethers';
-import { hedera, hederaTestnet } from '@reown/appkit/networks';
+import { hederaTestnet } from '@reown/appkit/networks';
 
-// 1. Get your Project ID from https://cloud.reown.com/
-const projectId = '56b4ff1bce8f0f39d1087b98b8de75fe'; 
+// 1. Get your Project ID from environment variables
+const projectId = import.meta.env.VITE_REOWN_PROJECT_ID || '56b4ff1bce8f0f39d1087b98b8de75fe'; 
 
 // 2. Define AppKit Metadata
 const metadata = {
@@ -16,7 +16,8 @@ const metadata = {
 // 3. Create the AppKit instance with the Ethers adapter
 export const appkit = createAppKit({
   adapters: [new EthersAdapter()],
-  networks: [hedera, hederaTestnet],
+  networks: [hederaTestnet],
+  defaultNetwork: hederaTestnet,
   metadata,
   projectId,
   features: {

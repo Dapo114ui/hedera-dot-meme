@@ -1,7 +1,232 @@
 import { appkit } from './wallet.js';
-import { BrowserProvider, parseEther } from 'ethers';
+import { BrowserProvider, parseEther, parseUnits, Contract, Interface } from 'ethers';
+
+const CONTRACT_ADDRESS_V2 = "0x2CDc10AA5B598365FCf1F5317B262aEDba81A59c"; // Deployed 0.0.8834608 (Non-strict fee logic)
+const ABI_V2 = [
+    "function createMemeToken(string name, string symbol, uint256 initialSupply, string imageUrl) payable returns (address)",
+    "event MemeLaunched(address indexed creator, address tokenAddress, string name, string symbol, string imageUrl)",
+    "event LaunchDebug(int responseCode, address tokenAddress)"
+];
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Image Upload Preview Logic
+    const photoUploadArea = document.getElementById('photo-upload-area');
+    const memePhotoInput = document.getElementById('memePhoto');
+    const photoPreview = document.getElementById('photo-preview');
+    const uploadPlaceholder = document.getElementById('upload-placeholder');
+
+    if (photoUploadArea && memePhotoInput) {
+        photoUploadArea.addEventListener('click', () => memePhotoInput.click());
+
+        memePhotoInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    photoPreview.src = event.target.result;
+                    photoPreview.style.display = 'block';
+                    uploadPlaceholder.style.display = 'none';
+                    photoUploadArea.style.borderStyle = 'solid';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Drag and drop support
+        photoUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            photoUploadArea.style.borderColor = '#FFD700';
+            photoUploadArea.style.background = 'rgba(255, 215, 0, 0.05)';
+        });
+
+        photoUploadArea.addEventListener('dragleave', () => {
+            photoUploadArea.style.borderColor = 'rgba(255, 215, 0, 0.3)';
+            photoUploadArea.style.background = 'rgba(255, 255, 255, 0.02)';
+        });
+
+        photoUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            photoUploadArea.style.borderColor = 'rgba(255, 215, 0, 0.3)';
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                memePhotoInput.files = e.dataTransfer.files;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    photoPreview.src = event.target.result;
+                    photoPreview.style.display = 'block';
+                    uploadPlaceholder.style.display = 'none';
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+    }
+
+    // Portfolio Page Logic
+    const portfolioGrid = document.getElementById('portfolio-grid');
+    const portfolioStatus = document.getElementById('portfolio-status');
+    const profileArea = document.getElementById('profile-area');
+    const pfpInput = document.getElementById('pfp-input');
+    const pfpUploadBtn = document.getElementById('pfp-upload-btn');
+    const pfpImg = document.getElementById('pfp-img');
+    const pfpPlaceholder = document.getElementById('pfp-placeholder');
+
+    if (portfolioGrid) {
+        // Subscribe to account to refresh portfolio on connection
+        appkit.subscribeAccount(state => {
+            if (state.isConnected && state.address) {
+                if (portfolioStatus) portfolioStatus.style.display = 'none';
+                if (profileArea) profileArea.style.display = 'block';
+
+                // Load PFP
+                const savedPfp = localStorage.getItem(`pfp_${state.address.toLowerCase()}`);
+                if (savedPfp) {
+                    pfpImg.src = savedPfp;
+                    pfpImg.style.display = 'block';
+                    pfpPlaceholder.style.display = 'none';
+                }
+
+                loadPortfolio(state.address);
+            } else {
+                if (portfolioStatus) portfolioStatus.style.display = 'block';
+                if (profileArea) profileArea.style.display = 'none';
+                portfolioGrid.innerHTML = '';
+            }
+        });
+
+        // PFP Upload Logic
+        if (pfpUploadBtn && pfpInput) {
+            pfpUploadBtn.addEventListener('click', () => pfpInput.click());
+            pfpInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const address = appkit.getAddress();
+                if (!address) return;
+
+                // Show loading state
+                pfpPlaceholder.style.opacity = '0.3';
+
+                try {
+                    const formData = new FormData();
+                    formData.append('image', file);
+                    const response = await fetch('https://api.imgbb.com/1/upload?key=6712b7a421b471676e7300c015b6028a', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        const url = data.data.url;
+                        localStorage.setItem(`pfp_${address.toLowerCase()}`, url);
+                        pfpImg.src = url;
+                        pfpImg.style.display = 'block';
+                        pfpPlaceholder.style.display = 'none';
+                    }
+                } catch (err) {
+                    console.error("PFP upload failed:", err);
+                    alert("Failed to upload profile picture.");
+                } finally {
+                    pfpPlaceholder.style.opacity = '1';
+                }
+            });
+        }
+    }
+
+    async function loadPortfolio(userAddress) {
+        try {
+            console.log("Fetching your memes...", userAddress);
+            const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/${CONTRACT_ADDRESS_V2}/results/logs?order=desc`);
+            if (!response.ok) throw new Error("Failed to fetch logs");
+
+            const data = await response.json();
+            const iface = new Interface(ABI_V2);
+
+            portfolioGrid.innerHTML = '';
+            let count = 0;
+
+            // Load hidden memes
+            const hiddenKey = `hidden_memes_${userAddress.toLowerCase()}`;
+            const hiddenMemes = JSON.parse(localStorage.getItem(hiddenKey) || "[]");
+
+            data.logs.forEach(log => {
+                try {
+                    const parsedLog = iface.parseLog({
+                        data: log.data,
+                        topics: log.topics
+                    });
+
+                    if (parsedLog.name === 'MemeLaunched') {
+                        const { creator, tokenAddress, name, symbol, imageUrl } = parsedLog.args;
+
+                        // Check if user is creator AND token isn't hidden
+                        if (creator.toLowerCase() === userAddress.toLowerCase() && !hiddenMemes.includes(tokenAddress.toLowerCase())) {
+                            count++;
+
+                            const tokenCard = document.createElement('div');
+                            tokenCard.className = 'token-card';
+                            tokenCard.style.position = 'relative';
+
+                            const displayImage = imageUrl && imageUrl.startsWith('http') ? imageUrl : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
+
+                            tokenCard.innerHTML = `
+                                <!-- Delete Button -->
+                                <button class="delete-meme-btn" data-address="${tokenAddress}" style="position: absolute; top: 15px; right: 15px; background: rgba(255, 77, 77, 0.1); border: 1px solid rgba(255, 77, 77, 0.2); color: #ff4d4d; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s ease;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></svg>
+                                </button>
+
+                                <div class="card-header">
+                                    <div class="token-avatar" style="background: url('${displayImage}') center/cover no-repeat; border-radius: 12px; width: 60px; height: 60px; border: 2px solid rgba(255, 215, 0, 0.2);">
+                                    </div>
+                                    <div class="token-info">
+                                        <div class="token-name-row">
+                                            <span class="token-name">${name}</span>
+                                            <span class="hot-badge" style="background: rgba(74, 222, 128, 0.2); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3);">Founder</span>
+                                        </div>
+                                        <span class="token-symbol">${symbol.startsWith('$') ? symbol : `$${symbol}`}</span>
+                                    </div>
+                                </div>
+                                <div class="card-stats">
+                                    <div class="stat-group">
+                                        <span class="stat-label">Token Address</span>
+                                        <span class="stat-value" style="font-size: 0.7rem;">${tokenAddress}</span>
+                                    </div>
+                                    <div class="stat-group">
+                                        <span class="stat-label">Platform Fee</span>
+                                        <span class="stat-value">1% Paid</span>
+                                    </div>
+                                </div>
+                                <div style="margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                    <a href="https://hashscan.io/testnet/token/${tokenAddress}" target="_blank" class="filter-btn" style="text-align: center; text-decoration: none; padding: 10px; font-size: 0.8rem;">HashScan</a>
+                                    <button class="filter-btn" style="padding: 10px; font-size: 0.8rem;" onclick="alert('Trading coming soon!')">Trade</button>
+                                </div>
+                            `;
+
+                            // Delete Click Handler
+                            const deleteBtn = tokenCard.querySelector('.delete-meme-btn');
+                            deleteBtn.addEventListener('click', () => {
+                                if (confirm(`Hide ${name} from your portfolio? This only hides it from your view, the token still exists on Hedera.`)) {
+                                    hiddenMemes.push(tokenAddress.toLowerCase());
+                                    localStorage.setItem(hiddenKey, JSON.stringify(hiddenMemes));
+                                    tokenCard.style.opacity = '0';
+                                    tokenCard.style.transform = 'scale(0.9)';
+                                    setTimeout(() => loadPortfolio(userAddress), 300);
+                                }
+                            });
+
+                            portfolioGrid.appendChild(tokenCard);
+                        }
+                    }
+                } catch (e) { }
+            });
+
+            if (count === 0) {
+                portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6;">You haven\'t launched any memes yet. 🚀</div>';
+            }
+        } catch (error) {
+            console.error("Error loading portfolio:", error);
+            portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #ff4d4d;">Error loading portfolio data.</div>';
+        }
+    }
+
     // Custom Wallet Button Logic
     const customWalletBtn = document.getElementById('custom-wallet-btn');
     if (customWalletBtn) {
@@ -24,56 +249,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             appkit.open();
         });
-        
-        const launchSubmitBtn = document.querySelector('.launch-submit-btn');
-        if (launchSubmitBtn) {
-            launchSubmitBtn.addEventListener('click', async () => {
-                const state = appkit.getState();
-                if (!state.isConnected) {
-                    appkit.open();
-                } else {
-                    try {
-                        const walletProvider = appkit.getWalletProvider();
-                        if (!walletProvider) {
-                            alert("No wallet provider found. Please reconnect your wallet.");
-                            return;
-                        }
-                        
-                        const provider = new BrowserProvider(walletProvider);
-                        const signer = await provider.getSigner();
-                        const address = await signer.getAddress();
-                        
-                        // Show loading state
-                        const originalHtml = launchSubmitBtn.innerHTML;
-                        launchSubmitBtn.innerHTML = `Loading...`;
-                        launchSubmitBtn.disabled = true;
-                        
-                        // Send 5 HBAR to self to simulate the launch fee transaction
-                        const tx = await signer.sendTransaction({
-                            to: address, 
-                            value: parseEther("5") 
-                        });
-                        
-                        alert(`Transaction Submitted! Hash: ${tx.hash}`);
-                        
-                        // Reset button
-                        launchSubmitBtn.disabled = false;
-                        launchSubmitBtn.innerHTML = originalHtml;
-                        
-                    } catch (err) {
-                        console.error("Transaction Error:", err);
-                        alert(`Transaction failed: ${err.shortMessage || err.message}`);
-                        
-                        // Reset button on error
-                        launchSubmitBtn.disabled = false;
-                        launchSubmitBtn.innerHTML = `
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 10.5L21 3"/><path d="M16 3H21V8"/><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/></svg>
-                            Launch Meme
-                        `;
-                    }
-                }
-            });
-        }
+
+        // ... (logic moved below)
+
 
         async function getHederaNativeId(evmAddress) {
             // 1. Handle Long-Zero Address automatically
@@ -93,10 +271,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Testing mainnet public
                 let response = await fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${evmAddress}`);
                 if (!response.ok) {
-                    // Try testnet as secondary fallback since site states "Testnet"
+                    // Try mirror nodes to find account ID
                     response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/accounts/${evmAddress}`);
                 }
-                
+
                 if (response.ok) {
                     const data = await response.json();
                     if (data.account) {
@@ -112,16 +290,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const updateWalletButtonState = async (state) => {
             const launchSubmitBtn = document.querySelector('.launch-submit-btn');
-            
+
             if (state.isConnected && state.address) {
                 const evmAddress = state.address;
-                
+
                 const cacheKey = `hedera_id_${evmAddress.toLowerCase()}`;
                 const cachedId = localStorage.getItem(cacheKey);
                 if (!cachedId || cachedId.toLowerCase().startsWith('0x')) {
                     customWalletBtn.innerHTML = `Connecting...`;
                 }
-                
+
                 const nativeId = await getHederaNativeId(evmAddress);
                 if (nativeId) {
                     const copyHtml = `
@@ -132,7 +310,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     customWalletBtn.innerHTML = `HBAR Connected`;
                 }
-                
+
                 if (launchSubmitBtn) {
                     launchSubmitBtn.innerHTML = `
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 10.5L21 3"/><path d="M16 3H21V8"/><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/></svg>
@@ -159,6 +337,303 @@ document.addEventListener('DOMContentLoaded', () => {
     if (primaryBtn) {
         primaryBtn.addEventListener('click', () => {
             alert('Redirecting to trading interface...');
+        });
+    }
+
+    // Markets Page Logic
+    const tokensGrid = document.getElementById('tokens-grid');
+    if (tokensGrid) {
+        loadMarkets();
+    }
+
+    // Leaderboard Page Logic
+    const topCreatorsList = document.getElementById('top-creators-list');
+    const topMemesList = document.getElementById('top-memes-list');
+    if (topCreatorsList && topMemesList) {
+        loadLeaderboard();
+    }
+    async function loadMarkets() {
+        try {
+            console.log("Fetching launched memes...");
+            const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/${CONTRACT_ADDRESS_V2}/results/logs?order=desc`);
+            if (!response.ok) throw new Error("Failed to fetch logs");
+
+            const data = await response.json();
+            const iface = new Interface(ABI_V2);
+
+            // Clear existing placeholders
+            tokensGrid.innerHTML = '';
+
+            if (data.logs.length === 0) {
+                tokensGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; opacity: 0.7;">No tokens launched yet. Be the first!</div>';
+                return;
+            }
+
+            data.logs.forEach(log => {
+                try {
+                    const parsedLog = iface.parseLog({
+                        data: log.data,
+                        topics: log.topics
+                    });
+
+                    if (parsedLog.name === 'MemeLaunched') {
+                        const { tokenAddress, name, symbol, imageUrl } = parsedLog.args;
+
+                        const tokenCard = document.createElement('a');
+                        tokenCard.href = `https://hashscan.io/testnet/token/${tokenAddress}`;
+                        tokenCard.target = "_blank";
+                        tokenCard.className = 'token-card';
+
+                        // Use stored image or default
+                        const displayImage = imageUrl && imageUrl.startsWith('http') ? imageUrl : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
+
+                        // Fix: Check if symbol already has $
+                        const cleanSymbol = symbol.startsWith('$') ? symbol : `$${symbol}`;
+
+                        tokenCard.innerHTML = `
+                            <div class="card-header">
+                                <div class="token-avatar" style="background: url('${displayImage}') center/cover no-repeat; border-radius: 12px; width: 60px; height: 60px; border: 2px solid rgba(255, 215, 0, 0.2);">
+                                </div>
+                                <div class="token-info">
+                                    <div class="token-name-row">
+                                        <span class="token-name">${name}</span>
+                                        <span class="hot-badge">New</span>
+                                    </div>
+                                    <span class="token-symbol">${cleanSymbol}</span>
+                                </div>
+                            </div>
+                            <div class="card-stats">
+                                <div class="stat-group">
+                                    <span class="stat-label">Address</span>
+                                    <span class="stat-value" style="font-size: 0.7rem; opacity: 0.6;">${tokenAddress.substring(0, 10)}...</span>
+                                </div>
+                                <div class="stat-group">
+                                    <span class="stat-label">Initial Supply</span>
+                                    <span class="stat-value positive">Verified</span>
+                                </div>
+                            </div>
+                        `;
+                        tokensGrid.appendChild(tokenCard);
+                    }
+                } catch (e) { }
+            });
+        } catch (error) {
+            console.error("Error loading markets:", error);
+            tokensGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #ff4d4d;">Error loading market data.</div>';
+        }
+    }
+
+    async function loadLeaderboard() {
+        try {
+            const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/${CONTRACT_ADDRESS_V2}/results/logs?order=desc`);
+            if (!response.ok) throw new Error("Failed to fetch logs");
+
+            const data = await response.json();
+            const iface = new Interface(ABI_V2);
+
+            const creators = {}; // { address: count }
+            const memes = [];    // [ { name, symbol, address, imageUrl } ]
+
+            data.logs.forEach(log => {
+                try {
+                    const parsedLog = iface.parseLog({ data: log.data, topics: log.topics });
+                    if (parsedLog.name === 'MemeLaunched') {
+                        const { creator, tokenAddress, name, symbol, imageUrl } = parsedLog.args;
+
+                        // Count for creators
+                        creators[creator] = (creators[creator] || 0) + 1;
+
+                        // Add to memes list
+                        memes.push({ name, symbol, address: tokenAddress, imageUrl });
+                    }
+                } catch (e) { }
+            });
+
+            // 1. Render Top Creators
+            const sortedCreators = Object.entries(creators)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10);
+
+            topCreatorsList.innerHTML = '';
+            for (let i = 0; i < sortedCreators.length; i++) {
+                const [address, count] = sortedCreators[i];
+                const nativeId = await getHederaNativeId(address) || address.substring(0, 10) + '...';
+
+                const item = document.createElement('div');
+                item.className = `list-item ${i === 0 ? 'highlight-gold' : ''}`;
+                item.innerHTML = `
+                    <div class="item-rank">${i + 1}</div>
+                    <div class="item-avatar"><span style="font-size:1.5rem">👤</span></div>
+                    <div class="item-info">
+                        <div class="item-primary">${nativeId}</div>
+                        <div class="item-secondary">Creator</div>
+                    </div>
+                    <div class="item-stats text-right">
+                        <div class="stat-primary text-gold">${count} Memes</div>
+                        <div class="stat-secondary">Launched</div>
+                    </div>
+                `;
+                topCreatorsList.appendChild(item);
+            }
+
+            // 2. Render Top Memes (By Holders)
+            topMemesList.innerHTML = '<div style="text-align: center; padding: 40px; opacity: 0.6;">Fetching holder data...</div>';
+
+            // Fetch holder counts in parallel
+            const memeStats = await Promise.all(memes.slice(0, 15).map(async (meme) => {
+                try {
+                    const res = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/tokens/${meme.address}/balances?limit=1`);
+                    const balanceData = await res.json();
+                    return { ...meme, holders: balanceData.balances.length > 0 ? balanceData.balances.length : 0 };
+                } catch (e) {
+                    return { ...meme, holders: 0 };
+                }
+            }));
+
+            const sortedMemes = memeStats.sort((a, b) => b.holders - a.holders).slice(0, 10);
+
+            topMemesList.innerHTML = '';
+            sortedMemes.forEach((meme, i) => {
+                const displayImage = meme.imageUrl && meme.imageUrl.startsWith('http') ? meme.imageUrl : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
+
+                const item = document.createElement('div');
+                item.className = `list-item ${i === 0 ? 'highlight-green' : ''}`;
+                item.innerHTML = `
+                    <div class="item-rank">${i + 1}</div>
+                    <div class="item-avatar-square" style="background: url('${displayImage}') center/cover no-repeat; width: 40px; height: 40px; border-radius: 8px;"></div>
+                    <div class="item-info">
+                        <div class="item-primary">${meme.name}</div>
+                        <div class="item-secondary">${meme.symbol}</div>
+                    </div>
+                    <div class="item-stats text-right">
+                        <div class="stat-primary text-green">${meme.holders} Holders</div>
+                        <div class="stat-secondary">Live Data</div>
+                    </div>
+                `;
+                topMemesList.appendChild(item);
+            });
+
+        } catch (error) {
+            console.error("Error loading leaderboard:", error);
+            topCreatorsList.innerHTML = '<div style="color: #ff4d4d; padding: 20px;">Error loading data.</div>';
+            topMemesList.innerHTML = '<div style="color: #ff4d4d; padding: 20px;">Error loading data.</div>';
+        }
+    }
+
+    // Launch Meme Button Logic
+    const launchSubmitBtn = document.querySelector('.launch-submit-btn');
+    if (launchSubmitBtn) {
+        launchSubmitBtn.addEventListener('click', async () => {
+            console.log("Launch button clicked");
+            
+            try {
+                const walletProvider = appkit.getWalletProvider();
+                if (!walletProvider) {
+                    console.log("No wallet provider, opening AppKit...");
+                    appkit.open();
+                    return;
+                }
+
+                const provider = new BrowserProvider(walletProvider);
+                const network = await provider.getNetwork();
+                console.log("Connected to network:", network.chainId.toString());
+
+                // Hedera Testnet is 296
+                if (network.chainId !== 296n) {
+                    alert("Wrong Network! Please switch your wallet to 'Hedera Testnet' and try again.");
+                    return;
+                }
+
+                const name = document.getElementById('tokenName')?.value;
+                const symbol = document.getElementById('ticker')?.value;
+                const supplyInput = document.getElementById('initialSupply')?.value;
+                const imageFile = document.getElementById('memePhoto')?.files[0];
+
+                if (!name || !symbol || !supplyInput) {
+                    alert("Please fill in Name, Symbol, and Supply.");
+                    return;
+                }
+
+                const originalHtml = launchSubmitBtn.innerHTML;
+                launchSubmitBtn.disabled = true;
+                launchSubmitBtn.innerHTML = `<span>Preparing Launch...</span>`;
+
+                // Step 1: Upload Image
+                let imageUrl = "";
+                if (imageFile) {
+                    launchSubmitBtn.innerHTML = `<span>Uploading Image...</span>`;
+                    try {
+                        const formData = new FormData();
+                        formData.append('image', imageFile);
+                        const uploadResponse = await fetch('https://api.imgbb.com/1/upload?key=6712b7a421b471676e7300c015b6028a', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const uploadData = await uploadResponse.json();
+                        if (uploadData.success) imageUrl = uploadData.data.url;
+                    } catch (uploadErr) {
+                        console.warn("Image upload failed, continuing without image.");
+                    }
+                }
+
+                const signer = await provider.getSigner();
+                const userAddress = await signer.getAddress();
+                const cleanSupply = supplyInput.replace(/,/g, '') || "0";
+                
+                // 1. Pay the 5 HBAR Platform Fee (Direct Transfer for 100% Reliability)
+                launchSubmitBtn.innerHTML = `<span>Step 1: Pay 5 HBAR Fee...</span>`;
+                
+                // 1. Pay the 5 HBAR Platform Fee (Standard Transfer Fix)
+                launchSubmitBtn.innerHTML = `<span>Step 1: Processing Platform Fee...</span>`;
+                
+                const treasuryId = import.meta.env.VITE_TREASURY_ACCOUNT_ID || "0.0.8809059";
+                // Convert to Long-Zero EVM address if it's a Hedera ID
+                const treasuryEvm = treasuryId.startsWith('0.0.') 
+                    ? `0x0000000000000000000000000000000000${parseInt(treasuryId.split('.')[2]).toString(16).padStart(6, '0')}`
+                    : treasuryId;
+
+                const feeParams = [{
+                    from: userAddress,
+                    to: treasuryEvm,
+                    value: "0x1dcd6500", // 5 HBAR
+                    gas: "0x5208" // 21,000 gas
+                }];
+                
+                await walletProvider.request({
+                    method: 'eth_sendTransaction',
+                    params: feeParams
+                });
+                
+                // 2. Direct HTS Call (Standard Token Creation)
+                launchSubmitBtn.innerHTML = `<span>Step 2: Creating Token...</span>`;
+                
+                // 2. Direct HTS Call
+                launchSubmitBtn.innerHTML = `<span>Step 2: Creating Token...</span>`;
+                const HTS_ADDRESS = "0x0000000000000000000000000000000000000167";
+                const HTS_ABI = ["function createFungibleToken((string,string,address,string,bool,uint32,bool,(uint256,(bool,address,bytes,bytes,address))[],(uint32,address,uint32)),uint256,uint256) payable"];
+                const htsContract = new Contract(HTS_ADDRESS, HTS_ABI, signer);
+                
+                const tokenData = [
+                    name, symbol, userAddress, "Hedera.Meme", false, 0, false, [], [0, "0x0000000000000000000000000000000000000000", 7776000]
+                ];
+
+                const launchTx = await htsContract.createFungibleToken(
+                    tokenData,
+                    parseUnits(cleanSupply, 8),
+                    8,
+                    { value: parseUnits("20", 8), gasLimit: 2000000 }
+                );
+                
+                await launchTx.wait();
+                alert(`SUCCESS! Your Native Hedera Token has been launched.`);
+                window.location.href = 'markets.html';
+
+            } catch (err) {
+                console.error("Critical Launch Error:", err);
+                alert(`Launch failed: ${err.message || "Unknown error"}`);
+                launchSubmitBtn.disabled = false;
+                launchSubmitBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 10.5L21 3"/><path d="M16 3H21V8"/><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/></svg> Launch Meme`;
+            }
         });
     }
 

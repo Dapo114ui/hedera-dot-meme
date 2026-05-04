@@ -1,3 +1,7 @@
 .vercel
 node_modules
-dist/  
+dist/
+.env
+.env.local
+build_log.txt
+*.log
