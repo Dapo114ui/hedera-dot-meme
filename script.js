@@ -529,12 +529,26 @@ document.addEventListener('DOMContentLoaded', () => {
         launchSubmitBtn.addEventListener('click', async (e) => {
             e.preventDefault();
             
-            // Hard-Trigger Requirements
-            const provider = window.ethereum || window.hashpack || window.hashconnect;
-            console.log('Bridge State:', !!provider);
+            // 500ms Delay to allow for extension injection
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Multi-Provider Check
+            const eth = window.ethereum;
+            const hp = window.hashpack;
+            const hc = window.hashconnect;
+            const isHP = eth?.isHashPack;
+
+            console.log('Provider Audit:', { 
+                ethereum: !!eth, 
+                hashpack: !!hp, 
+                hashconnect: !!hc, 
+                isHashPack: !!isHP 
+            });
+
+            const provider = eth || hp || hc;
             
             if (!provider) {
-                alert("No wallet found. Please install HashPack.");
+                alert("Wallet not detected. If HashPack is installed, please refresh the page or ensure the extension is unlocked and set to 'EVM' mode.");
                 return;
             }
 
