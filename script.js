@@ -538,22 +538,36 @@ document.addEventListener('DOMContentLoaded', () => {
     const launchSubmitBtn = document.querySelector('.launch-submit-btn');
     if (launchSubmitBtn) {
         launchSubmitBtn.addEventListener('click', async () => {
-            console.log("Launch button initiated with SDK refactor");
+            console.log("Launch button initiated (Universal EIP-1193 Flow)");
             
             try {
-                // 1. Connection & Initial Setup
-                const walletProvider = appkit.getWalletProvider();
+                // 1. Universal Provider Check (AppKit -> window.ethereum fallback)
+                let walletProvider = appkit.getWalletProvider();
+                if (!walletProvider && window.ethereum) {
+                    console.log("AppKit provider not found, falling back to window.ethereum (HashPack Extension)");
+                    walletProvider = window.ethereum;
+                }
+
                 if (!walletProvider) {
                     appkit.open();
                     return;
                 }
 
                 const provider = new BrowserProvider(walletProvider);
+                
+                // Enforce Chain ID 296
                 const network = await provider.getNetwork();
                 const chainId = Number(network.chainId);
                 if (chainId !== 296) {
-                    alert("Please switch to Hedera Testnet (296).");
-                    return;
+                    try {
+                        await walletProvider.request({
+                            method: 'wallet_switchEthereumChain',
+                            params: [{ chainId: '0x128' }], // 296
+                        });
+                    } catch (e) {
+                        alert("Please switch your wallet to Hedera Testnet (Chain ID 296).");
+                        return;
+                    }
                 }
 
                 const name = document.getElementById('tokenName')?.value;
@@ -562,97 +576,82 @@ document.addEventListener('DOMContentLoaded', () => {
                 const imageFile = document.getElementById('memePhoto')?.files[0];
 
                 if (!name || !symbol || !supplyInput) {
-                    alert("All fields are required.");
+                    alert("Name, Symbol, and Supply are required.");
                     return;
                 }
 
                 launchSubmitBtn.disabled = true;
-                launchSubmitBtn.innerHTML = `<span>Preparing SDK Tx...</span>`;
+                launchSubmitBtn.innerHTML = `<span>Preparing...</span>`;
 
                 const signer = await provider.getSigner();
                 const userAddress = await signer.getAddress();
-                
-                // 2. Fetch Hedera Account Details (Public Key is needed for Keys)
-                launchSubmitBtn.innerHTML = `<span>Fetching Account Details...</span>`;
-                const accountRes = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/accounts/${userAddress}`);
-                const accountData = await accountRes.json();
-                const userAccountIdStr = accountData.account;
-                const userPublicKeyStr = accountData.key?.key;
+                const cleanSupply = supplyInput.replace(/,/g, '') || "0";
+                const totalAmount = parseUnits(cleanSupply, 8);
 
-                if (!userAccountIdStr || !userPublicKeyStr) {
-                    throw new Error("Could not resolve Hedera Account ID or Public Key.");
-                }
-
-                const userAccountId = AccountId.fromString(userAccountIdStr);
-                const userPublicKey = PublicKey.fromString(userPublicKeyStr);
-                const treasuryId = AccountId.fromString("0.0.8809059");
-                const nodeAccountId = AccountId.fromString("0.0.3"); // Goal: Explicit Node Selection
-
-                // 3. Metadata Preparation
+                // 2. Metadata (IPFS format)
                 let ipfsCID = "bafybeidmeme" + Math.random().toString(36).substring(7); 
                 const memo = `ipfs://${ipfsCID}`;
 
-                const cleanSupply = supplyInput.replace(/,/g, '') || "0";
-                const totalAmount = BigInt(cleanSupply) * 100000000n; // 8 decimals
+                // 3. Step 1: Platform Fee (5 HBAR)
+                launchSubmitBtn.innerHTML = `<span>Step 1/2: Approving Fee...</span>`;
+                const treasuryId = "0.0.8809059";
+                const treasuryEvm = `0x0000000000000000000000000000000000${parseInt(treasuryId.split('.')[2]).toString(16).padStart(6, '0')}`;
 
-                // 4. Construct Frozen Atomic Transactions
-                launchSubmitBtn.innerHTML = `<span>Step 1/2: Platform Fee...</span>`;
-                
-                // Goal: Hbar Tinybar Validation (5 HBAR = 500,000,000 tHBAR)
-                const feeTx = new TransferTransaction()
-                    .addHbarTransfer(userAccountId, Hbar.from(-5))
-                    .addHbarTransfer(treasuryId, Hbar.from(5))
-                    .setTransactionId(TransactionId.generate(userAccountId))
-                    .setNodeAccountIds([nodeAccountId])
-                    .setTransactionValidDuration(180) // Goal: Max 180s duration
-                    .freeze();
-
-                // 5. Goal: Token Create Transaction with Keys and 3,000,000 Gas equivalent
-                launchSubmitBtn.innerHTML = `<span>Step 2/2: Token Creation...</span>`;
-                const tokenCreateTx = new TokenCreateTransaction()
-                    .setTokenName(name)
-                    .setTokenSymbol(symbol)
-                    .setDecimals(8)
-                    .setInitialSupply(totalAmount)
-                    .setTreasuryAccountId(userAccountId)
-                    .setTokenMemo(memo)
-                    .setAdminKey(userPublicKey)   // Goal: Admin Key from session
-                    .setSupplyKey(userPublicKey)  // Goal: Supply Key from session
-                    .setTransactionId(TransactionId.generate(userAccountId))
-                    .setNodeAccountIds([nodeAccountId])
-                    .setTransactionValidDuration(180)
-                    .freeze();
-
-                // 6. Execute via WalletConnect (hedera_signAndExecuteTransaction)
-                const txs = [feeTx, tokenCreateTx];
-                
-                for (const tx of txs) {
-                    const txBytes = tx.toBytes();
-                    const txBase64 = Buffer.from(txBytes).toString('base64');
-                    
-                    // Goal: Log Base64/Hex for debugging HashPack rejections
-                    console.log(`Submitting SDK Tx (${tx.constructor.name}):`, txBase64);
-
-                    try {
-                        const result = await walletProvider.request({
-                            method: 'hedera_signAndExecuteTransaction',
-                            params: [{
-                                transaction: txBase64
-                            }]
-                        });
-                        console.log(`${tx.constructor.name} Success:`, result);
-                    } catch (e) {
-                        console.error(`${tx.constructor.name} Failed:`, e);
-                        console.log("TX HEX DATA:", Buffer.from(txBytes).toString('hex'));
-                        throw new Error(`Transaction failed: ${e.message}`);
-                    }
+                try {
+                    const feeTx = await signer.sendTransaction({
+                        to: treasuryEvm,
+                        value: parseUnits("5", 8),
+                        gasLimit: 1000000,
+                        chainId: 296
+                    });
+                    await feeTx.wait();
+                } catch (feeErr) {
+                    console.error("Fee error:", feeErr);
+                    throw new Error(`Fee Approval Failed: ${feeErr.message}`);
                 }
 
-                alert(`SUCCESS! Your Meme Token '${name}' has been launched with Native HTS.`);
-                window.location.href = 'markets.html';
+                // 4. Step 2: HTS Token Creation (Via System Contract 0x167)
+                launchSubmitBtn.innerHTML = `<span>Step 2/2: Launching Token...</span>`;
+                const HTS_SYSTEM_ADDR = "0x0000000000000000000000000000000000000167";
+                const HTS_ABI = [
+                    "function createFungibleToken((string,string,address,string,bool,uint32,bool,(uint256,(bool,address,bytes,bytes,address))[],(uint32,address,uint32)),uint256,uint256) payable returns (int64, address)"
+                ];
+                const htsContract = new Contract(HTS_SYSTEM_ADDR, HTS_ABI, signer);
+
+                const tokenData = [
+                    name, 
+                    symbol, 
+                    userAddress, 
+                    memo, 
+                    false, 0, false, [], 
+                    [0, "0x0000000000000000000000000000000000000000", 7776000]
+                ];
+
+                try {
+                    // Encoding HTS data into eth_sendTransaction data field
+                    const creationTx = await htsContract.createFungibleToken(
+                        tokenData,
+                        totalAmount,
+                        8,
+                        { 
+                            value: parseUnits("25", 8), 
+                            gasLimit: 3000000,
+                            chainId: 296
+                        }
+                    );
+                    
+                    const receipt = await creationTx.wait();
+                    console.log("Launch Success!", receipt);
+                    alert(`SUCCESS! Your Meme Token has been launched on Hedera.`);
+                    window.location.href = 'markets.html';
+
+                } catch (creationErr) {
+                    console.error("HTS Error:", creationErr);
+                    throw new Error(`Token Creation Failed: ${creationErr.message}`);
+                }
 
             } catch (err) {
-                console.error("SDK Launch Error:", err);
+                console.error("Universal Launch Error:", err);
                 alert(`Launch Failed: ${err.message || "Unknown error"}`);
                 launchSubmitBtn.disabled = false;
                 launchSubmitBtn.innerHTML = `<span>Launch Meme</span>`;
