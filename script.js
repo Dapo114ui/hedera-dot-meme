@@ -1,8 +1,15 @@
 import { appkit } from './wallet.js';
 import { BrowserProvider, parseUnits, Contract, Interface } from 'ethers';
 
+// Global Error Handler for Debugging
+window.onerror = function(msg, url, line, col, error) {
+    alert(`GLOBAL ERROR: ${msg}\nAt: ${url}:${line}:${col}`);
+    return false;
+};
+
 // Global check for debugging
 console.log("Hedera dot meme script loaded");
+alert("Script Initialized!");
 
 const CONTRACT_ADDRESS_V2 = "0x2CDc10AA5B598365FCf1F5317B262aEDba81A59c"; // Deployed 0.0.8834608 (Non-strict fee logic)
 const ABI_V2 = [
@@ -11,101 +18,197 @@ const ABI_V2 = [
     "event LaunchDebug(int responseCode, address tokenAddress)"
 ];
 document.addEventListener('DOMContentLoaded', () => {
-    const launchSubmitBtn = document.querySelector('.launch-submit-btn');
-    if (launchSubmitBtn) {
-        launchSubmitBtn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            console.log("Launch Handler Hit");
-            
-            // 1. Initial Detection & Delay
-            await new Promise(resolve => setTimeout(resolve, 500));
-            const provider = window.ethereum || window.hashpack || window.hashconnect;
-            
-            if (!provider) {
-                alert("Wallet not detected. Please refresh or ensure HashPack is unlocked.");
-                return;
+    // Helper Functions
+    async function getHederaNativeId(evmAddress) {
+        if (!evmAddress) return null;
+        // 1. Handle Long-Zero Address automatically
+        if (evmAddress.toLowerCase().startsWith('0x000000000000000000000000')) {
+            const hexNum = evmAddress.substring(26);
+            const accountNum = parseInt(hexNum, 16);
+            return `0.0.${accountNum}`;
+        }
+
+        // 2. Read from Cache
+        const cacheKey = `hedera_id_${evmAddress.toLowerCase()}`;
+        const cachedId = localStorage.getItem(cacheKey);
+        if (cachedId && !cachedId.toLowerCase().startsWith('0x')) return cachedId;
+
+        // 3. Mirror Node Fetch
+        try {
+            let response = await fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${evmAddress}`);
+            if (!response.ok) {
+                response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/accounts/${evmAddress}`);
             }
 
-            launchSubmitBtn.disabled = true;
-            launchSubmitBtn.innerHTML = `<span>Check Your Wallet...</span>`;
-
-            try {
-                // Goal: Technical Fix - Resolve 0x127 loop by enforcing 296 (0x128)
-                const accounts = await provider.request({ method: 'eth_requestAccounts' });
-                const userAddress = accounts[0];
-
-                // Goal: Use Environment Variables (Safe Fallback)
-                let treasuryId = "0.0.8809059";
-                try {
-                    treasuryId = import.meta.env.VITE_TREASURY_ACCOUNT_ID || treasuryId;
-                } catch (e) {}
-                
-                const treasuryEvm = `0x0000000000000000000000000000000000${parseInt(treasuryId.split('.')[2]).toString(16).padStart(6, '0')}`;
-
-                // Goal 1: Fee Collection (5 HBAR)
-                await provider.request({
-                    method: 'eth_sendTransaction',
-                    params: [{
-                        from: userAddress,
-                        to: treasuryEvm,
-                        value: '0x1dcd6500', // 5 HBAR in tinybars
-                        gas: '0xf4240',      // 1,000,000
-                        chainId: '0x128'     // 296
-                    }]
-                });
-
-                // Goal 2: HTS Token Creation
-                launchSubmitBtn.innerHTML = `<span>Launching Token...</span>`;
-                const name = document.getElementById('tokenName')?.value;
-                const symbol = document.getElementById('ticker')?.value;
-                const supplyInput = document.getElementById('initialSupply')?.value;
-                const cleanSupply = supplyInput.replace(/,/g, '') || "0";
-                const totalAmount = parseUnits(cleanSupply, 8);
-
-                const htsInterface = new Interface([
-                    "function createFungibleToken((string,string,address,string,bool,uint32,bool,(uint256,(bool,address,bytes,bytes,address))[],(uint32,address,uint32)),uint256,uint256) payable returns (int64, address)"
-                ]);
-
-                // Goal 4: IPFS Metadata
-                let ipfsCID = "bafybeidmeme" + Math.random().toString(36).substring(7); 
-                const memo = `ipfs://${ipfsCID}`;
-
-                const tokenData = [
-                    name, symbol, userAddress, memo, 
-                    false, 0, false, [], 
-                    [0, "0x0000000000000000000000000000000000000000", 7776000]
-                ];
-
-                const encodedData = htsInterface.encodeFunctionData("createFungibleToken", [
-                    tokenData,
-                    totalAmount,
-                    8
-                ]);
-
-                // Goal: Technical Fix - Gas Limit 3,000,000
-                await provider.request({
-                    method: 'eth_sendTransaction',
-                    params: [{
-                        from: userAddress,
-                        to: "0x0000000000000000000000000000000000000167",
-                        data: encodedData,
-                        value: '0x9502F900', // 25 HBAR creation fee
-                        gas: '0x2dc6c0',     // 3,000,000
-                        chainId: '0x128'
-                    }]
-                });
-
-                alert(`SUCCESS! Your Meme Token is live.`);
-                window.location.href = 'markets.html';
-
-            } catch (err) {
-                console.error("Launch Error:", err);
-                alert(`Launch Failed: ${err.message || "Unknown error"}`);
-                launchSubmitBtn.disabled = false;
-                launchSubmitBtn.innerHTML = `<span>Launch Meme</span>`;
+            if (response.ok) {
+                const data = await response.json();
+                if (data.account) {
+                    localStorage.setItem(cacheKey, data.account);
+                    return data.account;
+                }
             }
-        });
+        } catch (error) {
+            console.error("Could not fetch Hedera ID:", error);
+        }
+        return null;
     }
+
+    const updateWalletButtonState = async (state) => {
+        const launchSubmitBtn = document.querySelector('.launch-submit-btn');
+        const customWalletBtn = document.getElementById('custom-wallet-btn');
+        if (!customWalletBtn) return;
+
+        if (state.isConnected && state.address) {
+            const evmAddress = state.address;
+            const nativeId = await getHederaNativeId(evmAddress);
+            
+            if (nativeId) {
+                const copyHtml = `
+                    <span class="copy-btn" data-address="${nativeId}" title="Copy Hedera Address" style="margin-left: 6px; padding: 2px; cursor: pointer; display: inline-flex; align-items: center; opacity: 0.8;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    </span>`;
+                customWalletBtn.innerHTML = `HBAR ${nativeId} ${copyHtml}`;
+            } else {
+                customWalletBtn.innerHTML = `HBAR Connected`;
+            }
+
+            if (launchSubmitBtn) {
+                launchSubmitBtn.innerHTML = `
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 10.5L21 3"/><path d="M16 3H21V8"/><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/></svg>
+                    Launch Meme
+                `;
+            }
+        } else {
+            customWalletBtn.innerHTML = `Connect Wallet`;
+            if (launchSubmitBtn) {
+                launchSubmitBtn.innerHTML = `
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 10.5L21 3"/><path d="M16 3H21V8"/><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/></svg>
+                    Connect Wallet to Launch
+                `;
+            }
+        }
+    };
+
+    // Use Event Delegation for Launch Button to be extremely robust
+    document.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.launch-submit-btn');
+        if (!btn) return;
+
+        e.preventDefault();
+        alert("Launch button clicked! (Delegated Event)");
+        console.log("Launch Button Clicked");
+
+        // 1. Check Connection via AppKit first
+        let isConnected = false;
+        try {
+            isConnected = appkit.getIsConnected();
+        } catch (err) {
+            alert("Error checking connection: " + err.message);
+        }
+
+        if (!isConnected) {
+            alert("Not connected, opening AppKit modal...");
+            appkit.open();
+            return;
+        }
+
+        // 2. Get Provider from AppKit
+        let provider;
+        try {
+            provider = appkit.getWalletProvider();
+            if (!provider) {
+                // Fallback to window.ethereum if AppKit provider is missing
+                provider = window.ethereum || window.hashpack || window.hashconnect;
+            }
+        } catch (err) {
+            alert("Error getting provider: " + err.message);
+        }
+        
+        if (!provider) {
+            alert("CRITICAL: No EVM Provider found. Please ensure HashPack is active.");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = `<span>Preparing Launch...</span>`;
+
+        try {
+            alert("Starting Launch Flow...");
+            // Goal: Use Environment Variables (Safe Fallback)
+            let treasuryId = "0.0.8809059";
+            try {
+                treasuryId = import.meta.env.VITE_TREASURY_ACCOUNT_ID || treasuryId;
+            } catch (e) {}
+            
+            const treasuryEvm = `0x0000000000000000000000000000000000${parseInt(treasuryId.split('.')[2]).toString(16).padStart(6, '0')}`;
+            const userAddress = appkit.getAddress();
+
+            console.log("Step 1: Fee Collection (5 HBAR)");
+            btn.innerHTML = `<span>Paying Platform Fee...</span>`;
+            
+            await provider.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                    from: userAddress,
+                    to: treasuryEvm,
+                    value: '0x1dcd6500', // 5 HBAR in tinybars
+                    gas: '0xf4240',      // 1,000,000
+                    chainId: '0x128'     // 296
+                }]
+            });
+
+            // Goal 2: HTS Token Creation
+            console.log("Step 2: HTS Token Creation");
+            btn.innerHTML = `<span>Creating Token...</span>`;
+            
+            const name = document.getElementById('tokenName')?.value;
+            const symbol = document.getElementById('ticker')?.value;
+            const supplyInput = document.getElementById('initialSupply')?.value;
+            const cleanSupply = supplyInput.replace(/,/g, '') || "0";
+            const totalAmount = parseUnits(cleanSupply, 8);
+
+            const htsInterface = new Interface([
+                "function createFungibleToken((string,string,address,string,bool,uint32,bool,(uint256,(bool,address,bytes,bytes,address))[],(uint32,address,uint32)),uint256,uint256) payable returns (int64, address)"
+            ]);
+
+            let ipfsCID = "bafybeidmeme" + Math.random().toString(36).substring(7); 
+            const memo = `ipfs://${ipfsCID}`;
+
+            const tokenData = [
+                name, symbol, userAddress, memo, 
+                false, 0, false, [], 
+                [0, "0x0000000000000000000000000000000000000000", 7776000]
+            ];
+
+            const encodedData = htsInterface.encodeFunctionData("createFungibleToken", [
+                tokenData,
+                totalAmount,
+                8
+            ]);
+
+            await provider.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                    from: userAddress,
+                    to: "0x0000000000000000000000000000000000000167",
+                    data: encodedData,
+                    value: '0x9502F900', // 25 HBAR creation fee
+                    gas: '0x2dc6c0',     // 3,000,000
+                    chainId: '0x128'
+                }]
+            });
+
+            alert(`SUCCESS! Your Meme Token is live.`);
+            window.location.href = 'markets.html';
+
+        } catch (err) {
+            console.error("Launch Error:", err);
+            alert(`Launch Failed: ${err.message || "Unknown error"}`);
+            btn.disabled = false;
+            btn.innerHTML = `<span>Launch Meme</span>`;
+        }
+    });
+
     const photoUploadArea = document.getElementById('photo-upload-area');
     const memePhotoInput = document.getElementById('memePhoto');
     const photoPreview = document.getElementById('photo-preview');
@@ -327,7 +430,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const customWalletBtn = document.getElementById('custom-wallet-btn');
     if (customWalletBtn) {
         customWalletBtn.addEventListener('click', (e) => {
-            // Check if user clicked the copy button
             const copyBtn = e.target.closest('.copy-btn');
             if (copyBtn) {
                 e.preventDefault();
@@ -335,7 +437,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const addressToCopy = copyBtn.dataset.address;
                 if (addressToCopy) {
                     navigator.clipboard.writeText(addressToCopy);
-                    // Show confirmation icon temporarily
                     copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
                     setTimeout(() => {
                         copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
@@ -346,89 +447,12 @@ document.addEventListener('DOMContentLoaded', () => {
             appkit.open();
         });
 
-        // ... (logic moved below)
-
-
-        async function getHederaNativeId(evmAddress) {
-            // 1. Handle Long-Zero Address automatically
-            if (evmAddress.toLowerCase().startsWith('0x000000000000000000000000')) {
-                const hexNum = evmAddress.substring(26);
-                const accountNum = parseInt(hexNum, 16);
-                return `0.0.${accountNum}`;
-            }
-
-            // 2. Read from Cache to improve performance
-            const cacheKey = `hedera_id_${evmAddress.toLowerCase()}`;
-            const cachedId = localStorage.getItem(cacheKey);
-            if (cachedId && !cachedId.toLowerCase().startsWith('0x')) return cachedId;
-
-            // 3. Mirror Node Fetch (testnet fallback to mainnet)
-            try {
-                // Testing mainnet public
-                let response = await fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${evmAddress}`);
-                if (!response.ok) {
-                    // Try mirror nodes to find account ID
-                    response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/accounts/${evmAddress}`);
-                }
-
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.account) {
-                        localStorage.setItem(cacheKey, data.account);
-                        return data.account;
-                    }
-                }
-            } catch (error) {
-                console.error("Could not fetch Hedera ID:", error);
-            }
-            return null;
-        }
-
-        const updateWalletButtonState = async (state) => {
-            const launchSubmitBtn = document.querySelector('.launch-submit-btn');
-
-            if (state.isConnected && state.address) {
-                const evmAddress = state.address;
-
-                const cacheKey = `hedera_id_${evmAddress.toLowerCase()}`;
-                const cachedId = localStorage.getItem(cacheKey);
-                if (!cachedId || cachedId.toLowerCase().startsWith('0x')) {
-                    customWalletBtn.innerHTML = `Connecting...`;
-                }
-
-                const nativeId = await getHederaNativeId(evmAddress);
-                if (nativeId) {
-                    const copyHtml = `
-                        <span class="copy-btn" data-address="${nativeId}" title="Copy Hedera Address" style="margin-left: 6px; padding: 2px; cursor: pointer; display: inline-flex; align-items: center; opacity: 0.8;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                        </span>`;
-                    customWalletBtn.innerHTML = `HBAR ${nativeId} ${copyHtml}`;
-                } else {
-                    customWalletBtn.innerHTML = `HBAR Connected`;
-                }
-
-                if (launchSubmitBtn) {
-                    launchSubmitBtn.innerHTML = `
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 10.5L21 3"/><path d="M16 3H21V8"/><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/></svg>
-                        Launch Meme
-                    `;
-                }
-            } else {
-                customWalletBtn.innerHTML = `Connect Wallet`;
-                if (launchSubmitBtn) {
-                    launchSubmitBtn.innerHTML = `
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 10.5L21 3"/><path d="M16 3H21V8"/><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6"/></svg>
-                        Connect Wallet to Launch
-                    `;
-                }
-            }
-        };
-
         // Subscribe to account state changes
         appkit.subscribeAccount(state => {
             updateWalletButtonState(state);
         });
     }
+
     const primaryBtn = document.querySelector('.primary-btn');
     if (primaryBtn) {
         primaryBtn.addEventListener('click', () => {
