@@ -74,7 +74,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentUserEvm = null;
     let currentUserNative = null;
 
-    const updateWalletUI = () => {
+    const updateWalletUI = async () => {
         const launchSubmitBtn = document.querySelector('.launch-submit-btn');
         const customWalletBtn = document.getElementById('custom-wallet-btn');
         if (!customWalletBtn) return;
@@ -84,7 +84,25 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <span class="copy-btn" data-address="${currentUserNative}" title="Copy Hedera Address" style="margin-left: 6px; padding: 2px; cursor: pointer; display: inline-flex; align-items: center; opacity: 0.8;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                 </span>`;
-            customWalletBtn.innerHTML = `HBAR ${currentUserNative} ${copyHtml}`;
+            
+            customWalletBtn.innerHTML = `<span id="wallet-balance-display" style="opacity: 0.8; font-weight: normal; margin-right: 6px;">... ℏ</span> ${currentUserNative} ${copyHtml}`;
+
+            // Fetch balance asynchronously
+            try {
+                const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/balances?account.id=${currentUserNative}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.balances && data.balances.length > 0) {
+                        const hbarBalance = (data.balances[0].balance / 100000000).toFixed(2);
+                        const balanceDisplay = document.getElementById('wallet-balance-display');
+                        if (balanceDisplay) {
+                            balanceDisplay.innerText = `${hbarBalance} ℏ |`;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to fetch balance:", err);
+            }
 
             if (launchSubmitBtn) {
                 launchSubmitBtn.innerHTML = `
