@@ -103,14 +103,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
+    const getProvider = () => {
+        if (window.hashpack) return window.hashpack;
+        if (window.ethereum?.isHashPack) return window.ethereum;
+        if (window.ethereum) return window.ethereum;
+        return null;
+    };
+
     const connectWallet = async () => {
-        if (!window.ethereum) {
+        const provider = getProvider();
+        if (!provider) {
             alert("No injected provider found. Please install HashPack extension.");
             return false;
         }
         
         try {
-            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            const accounts = await provider.request({ method: 'eth_requestAccounts' });
             if (accounts && accounts.length > 0) {
                 currentUserEvm = accounts[0];
                 currentUserNative = await getHederaNativeId(currentUserEvm);
@@ -125,9 +133,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     // Auto-connect on load if already connected previously
-    if (window.ethereum) {
+    const provider = getProvider();
+    if (provider) {
         try {
-            const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+            const accounts = await provider.request({ method: 'eth_accounts' });
             if (accounts && accounts.length > 0) {
                 currentUserEvm = accounts[0];
                 currentUserNative = await getHederaNativeId(currentUserEvm);
@@ -172,8 +181,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         btn.innerHTML = `<span>Preparing Launch...</span>`;
 
         try {
+            const provider = getProvider();
             // Check Chain ID before proceeding
-            const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+            const chainId = await provider.request({ method: 'eth_chainId' });
             if (chainId !== '0x128') {
                 alert("Please switch your wallet to Hedera Testnet (Chain ID 296 / 0x128) and try again.");
                 btn.disabled = false;
@@ -204,7 +214,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const feeTxBase64 = uint8ArrayToBase64(feeTxBytes);
             
             // HashPack expects parameters in an array. Let's send the base64 encoded transaction bytes.
-            const feeResponse = await window.ethereum.request({
+            const feeResponse = await provider.request({
                 method: 'hedera_signAndExecuteTransaction',
                 params: [feeTxBase64]
             });
@@ -241,7 +251,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const createTxBytes = createTx.toBytes();
             const createTxBase64 = uint8ArrayToBase64(createTxBytes);
 
-            const createResponse = await window.ethereum.request({
+            const createResponse = await provider.request({
                 method: 'hedera_signAndExecuteTransaction',
                 params: [createTxBase64]
             });
