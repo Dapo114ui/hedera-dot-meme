@@ -101,6 +101,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 `;
             }
         }
+
+        // Trigger portfolio refresh if the function exists
+        if (typeof window.refreshPortfolioUI === 'function') {
+            window.refreshPortfolioUI();
+        }
     };
 
     let hashpackProvider = null;
@@ -168,9 +173,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }, 500);
 
-    // Use Event Delegation for Connect/Launch
+    // Use Event Delegation for Connect/Launch/Copy
     document.addEventListener('click', async (e) => {
-        const walletBtn = e.target.closest('#custom-wallet-btn');
+        const copyBtn = e.target.closest('.copy-btn');
+        if (copyBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const addressToCopy = copyBtn.dataset.address;
+            if (addressToCopy) {
+                navigator.clipboard.writeText(addressToCopy);
+                copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+                setTimeout(() => {
+                    copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+                }, 2000);
+            }
+            return;
+        }
+
+        const walletBtn = e.target.closest('#custom-wallet-btn') || e.target.closest('.connect-wallet-trigger');
         if (walletBtn) {
             if (currentUserNative) {
                 if (confirm("Disconnect? (Requires clearing cache or locking wallet)")) {
@@ -352,27 +372,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     const pfpPlaceholder = document.getElementById('pfp-placeholder');
 
     if (portfolioGrid) {
-        // Subscribe to account to refresh portfolio on connection
-        appkit.subscribeAccount(state => {
-            if (state.isConnected && state.address) {
+        window.refreshPortfolioUI = () => {
+            if (currentUserNative && currentUserEvm) {
                 if (portfolioStatus) portfolioStatus.style.display = 'none';
                 if (profileArea) profileArea.style.display = 'block';
 
                 // Load PFP
-                const savedPfp = localStorage.getItem(`pfp_${state.address.toLowerCase()}`);
+                const savedPfp = localStorage.getItem(`pfp_${currentUserEvm.toLowerCase()}`);
                 if (savedPfp) {
                     pfpImg.src = savedPfp;
                     pfpImg.style.display = 'block';
                     pfpPlaceholder.style.display = 'none';
                 }
 
-                loadPortfolio(state.address);
+                loadPortfolio(currentUserEvm);
             } else {
                 if (portfolioStatus) portfolioStatus.style.display = 'block';
                 if (profileArea) profileArea.style.display = 'none';
                 portfolioGrid.innerHTML = '';
             }
-        });
+        };
 
         // PFP Upload Logic
         if (pfpUploadBtn && pfpInput) {
@@ -381,7 +400,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const file = e.target.files[0];
                 if (!file) return;
 
-                const address = appkit.getAddress();
+                const address = currentUserEvm;
                 if (!address) return;
 
                 // Show loading state
@@ -508,32 +527,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // Custom Wallet Button Logic
-    const customWalletBtn = document.getElementById('custom-wallet-btn');
-    if (customWalletBtn) {
-        customWalletBtn.addEventListener('click', (e) => {
-            const copyBtn = e.target.closest('.copy-btn');
-            if (copyBtn) {
-                e.preventDefault();
-                e.stopPropagation();
-                const addressToCopy = copyBtn.dataset.address;
-                if (addressToCopy) {
-                    navigator.clipboard.writeText(addressToCopy);
-                    copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
-                    setTimeout(() => {
-                        copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
-                    }, 2000);
-                }
-                return;
-            }
-            appkit.open();
-        });
-
-        // Subscribe to account state changes
-        appkit.subscribeAccount(state => {
-            updateWalletButtonState(state);
-        });
-    }
 
     const primaryBtn = document.querySelector('.primary-btn');
     if (primaryBtn) {
