@@ -254,33 +254,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const ethersProvider = new BrowserProvider(injectedProvider);
             const signer = await ethersProvider.getSigner();
 
-            // Goal: Fee Collection (5 HBAR)
-            let treasuryIdStr = "0.0.8809059";
-            try {
-                treasuryIdStr = import.meta.env.VITE_TREASURY_ACCOUNT_ID || treasuryIdStr;
-            } catch (e) {}
-
-            // Convert Hedera ID to EVM Address for Ethers
-            let treasuryEvm = treasuryIdStr;
-            if (treasuryIdStr.startsWith('0.0.')) {
-                const num = parseInt(treasuryIdStr.split('.')[2]);
-                treasuryEvm = `0x0000000000000000000000000000000000${num.toString(16).padStart(6, '0')}`;
-            }
-            
-            console.log("Step 1: 5 HBAR Fee to", treasuryEvm);
-            btn.innerHTML = `<span>Approve 5 HBAR Fee...</span>`;
-            
-            const feeTx = await signer.sendTransaction({
-                to: treasuryEvm,
-                value: parseEther("5.0")
-            });
-            console.log("Fee Tx Sent:", feeTx.hash);
-            
-            btn.innerHTML = `<span>Waiting for Confirmation...</span>`;
-            await feeTx.wait();
-            
             // Goal: HTS Token Creation
-            console.log("Step 2: HTS Token Creation");
+            console.log("Step 1: HTS Token Creation via Precompile");
             btn.innerHTML = `<span>Approving Meme Launch...</span>`;
 
             const name = document.getElementById('tokenName')?.value || "My Meme";
