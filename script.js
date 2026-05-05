@@ -7,7 +7,7 @@ import {
     TokenSupplyType,
     TransactionId
 } from '@hashgraph/sdk';
-import { Interface, parseUnits, BrowserProvider, Contract, parseEther } from 'ethers';
+import { Interface, parseUnits } from 'ethers'; // Still used for ABI parsing in other parts
 
 // Global Error Handler for Debugging
 window.onerror = function(msg, url, line, col, error) {
@@ -248,12 +248,48 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
 
-            console.log("CRITICAL: Executing Smart Contract Launch via Ethers");
-            btn.innerHTML = `<span>Approve Transaction...</span>`;
+            console.log("CRITICAL: Executing Pure Extension Launch v3.1", currentUserNative);
+            
+            const userAccountIdObj = AccountId.fromString(currentUserNative);
+            const signerAccountId = `hedera:testnet:${currentUserNative}`;
+            
+            // Goal: Fee Collection (5 HBAR)
+            let treasuryIdStr = "0.0.8809059";
+            try {
+                treasuryIdStr = import.meta.env.VITE_TREASURY_ACCOUNT_ID || treasuryIdStr;
+            } catch (e) {}
+            
+            console.log("Step 1: 5 HBAR Fee to", treasuryIdStr);
+            btn.innerHTML = `<span>Approve 5 HBAR Fee...</span>`;
+            
+            const txIdFee = TransactionId.generate(userAccountIdObj);
+            const feeTx = new TransferTransaction()
+                .setTransactionId(txIdFee)
+                .setNodeAccountIds([AccountId.fromString("0.0.3")]) // Testnet node
+                .addHbarTransfer(userAccountIdObj, new Hbar(-5))
+                .addHbarTransfer(AccountId.fromString(treasuryIdStr), new Hbar(5))
+                .freeze();
+            
+            const feeTxBytes = feeTx.toBytes();
+            const feeTxBase64 = uint8ArrayToBase64(feeTxBytes);
+            
+            // HIP-820 format: array with object containing signerAccountId and transactionList
+            const feeResponse = await injectedProvider.request({
+                method: 'hedera_signAndExecuteTransaction',
+                params: [{
+                    signerAccountId: signerAccountId,
+                    transactionList: feeTxBase64
+                }]
+            });
+            console.log("Fee Tx Response:", feeResponse);
 
-            const ethersProvider = new BrowserProvider(injectedProvider);
-            const signer = await ethersProvider.getSigner();
-            const contract = new Contract(CONTRACT_ADDRESS_V2, ABI_V2, signer);
+            btn.innerHTML = `<span>Waiting for Confirmation...</span>`;
+            // Add a small delay for the network to process
+            await new Promise(r => setTimeout(r, 3000));
+
+            // Goal: HTS Token Creation
+            console.log("Step 2: HTS Token Creation");
+            btn.innerHTML = `<span>Approving Meme Launch...</span>`;
 
             const name = document.getElementById('tokenName')?.value || "My Meme";
             const symbol = document.getElementById('ticker')?.value || "MEME";
@@ -261,19 +297,37 @@ document.addEventListener('DOMContentLoaded', async () => {
             const cleanSupply = parseInt(supplyInput.replace(/,/g, '')) || 0;
             const memo = `ipfs://bafybeidmeme${Math.random().toString(36).substring(7)}`;
 
-            // Call the contract, attaching the 5 HBAR fee
-            const tx = await contract.createMemeToken(name, symbol, cleanSupply, memo, { 
-                value: parseEther("5.0"),
-                gasLimit: 3000000 // Provide high gas limit for HTS ops
+            const txIdCreate = TransactionId.generate(userAccountIdObj);
+            const createTx = new TokenCreateTransaction()
+                .setTransactionId(txIdCreate)
+                .setNodeAccountIds([AccountId.fromString("0.0.3")])
+                .setTokenName(name)
+                .setTokenSymbol(symbol)
+                .setTokenType(TokenType.FungibleCommon)
+                .setDecimals(8)
+                .setInitialSupply(cleanSupply)
+                .setTreasuryAccountId(userAccountIdObj)
+                .setSupplyType(TokenSupplyType.Infinite)
+                .setTokenMemo(memo)
+                .freeze();
+
+            const createTxBytes = createTx.toBytes();
+            const createTxBase64 = uint8ArrayToBase64(createTxBytes);
+
+            const createResponse = await injectedProvider.request({
+                method: 'hedera_signAndExecuteTransaction',
+                params: [{
+                    signerAccountId: signerAccountId,
+                    transactionList: createTxBase64
+                }]
             });
-
-            console.log("Transaction Sent:", tx.hash);
-            btn.innerHTML = `<span>Waiting for Confirmation...</span>`;
             
-            const receipt = await tx.wait();
-            console.log("Transaction Confirmed:", receipt);
+            console.log("Creation Tx Response:", createResponse);
+            btn.innerHTML = `<span>Finalizing...</span>`;
+            
+            await new Promise(r => setTimeout(r, 4000));
 
-            alert(`SUCCESS! Your Meme Token is live.\nTransaction Hash: ${receipt.hash}`);
+            alert(`SUCCESS! Your Meme Token is live.`);
             window.location.href = 'markets.html';
 
         } catch (err) {
