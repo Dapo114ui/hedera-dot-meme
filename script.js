@@ -96,17 +96,17 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         console.log("CRITICAL: Executing Direct Injected Launch v2.3");
 
-        // 1. Session Check
-        if (!appkit.getIsConnected()) {
-            appkit.open();
-            return;
-        }
-
-        // 2. Bypass Hook: Direct Injected Provider
-        const provider = window.hashpack || window.ethereum || window.hashconnect;
+        // 1. Direct Provider Detection (Bypassing AppKit Bridge)
+        const provider = window.hashpack || (window.ethereum?.isHashPack ? window.ethereum : window.ethereum);
         
+        console.log("Direct Provider Audit:", {
+            isNativeHashPack: !!window.hashpack,
+            isEVMHashPack: !!window.ethereum?.isHashPack,
+            usingProvider: !!provider
+        });
+
         if (!provider) {
-            alert("No Wallet Extension detected! Please ensure HashPack is active.");
+            alert("HashPack Extension not detected. Please ensure it is installed and UNLOCKED.");
             return;
         }
 
@@ -114,14 +114,12 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.innerHTML = `<span>Connecting to Wallet...</span>`;
 
         try {
-            // 3. Use Ethers for reliable interaction
-            console.log("Wrapping provider with Ethers...");
+            // 2. Ethers Wrapper
             const ethersProvider = new BrowserProvider(provider);
             const signer = await ethersProvider.getSigner();
             const userAddress = await signer.getAddress();
             
-            console.log("Wallet Connected:", userAddress);
-            alert("Wallet Detected: " + userAddress);
+            console.log("Wallet Access Granted:", userAddress);
 
             // Goal: Fee Collection (5 HBAR)
             let treasuryId = "0.0.8809059";
