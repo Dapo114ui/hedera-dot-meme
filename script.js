@@ -1,3 +1,4 @@
+import { hc, initHashConnect, connectHashConnect, disconnectHashConnect } from './wallet.js';
 import { 
     TokenCreateTransaction, 
     TransferTransaction, 
@@ -16,7 +17,7 @@ window.onerror = function(msg, url, line, col, error) {
 };
 
 // Global check for debugging
-console.log("Hedera dot meme script v3.0 (Pure Extension) loaded");
+console.log("Hedera dot meme script v4.0 (HashConnect Restored) loaded");
 
 const CONTRACT_ADDRESS_V2 = "0x2CDc10AA5B598365FCf1F5317B262aEDba81A59c"; // Deployed 0.0.8834608 (Non-strict fee logic)
 const ABI_V2 = [
@@ -25,39 +26,24 @@ const ABI_V2 = [
     "event LaunchDebug(int responseCode, address tokenAddress)"
 ];
 document.addEventListener('DOMContentLoaded', async () => {
-
-    // Helper: Bytes to Base64
-    function uint8ArrayToBase64(bytes) {
-        let binary = '';
-        const len = bytes.byteLength;
-        for (let i = 0; i < len; i++) {
-            binary += String.fromCharCode(bytes[i]);
-        }
-        return window.btoa(binary);
-    }
+    // 0. Initialize HashConnect
+    await initHashConnect();
 
     // Helper Functions
     async function getHederaNativeId(evmAddress) {
         if (!evmAddress) return null;
-        // 1. Handle Long-Zero Address automatically
         if (evmAddress.toLowerCase().startsWith('0x000000000000000000000000')) {
             const hexNum = evmAddress.substring(26);
-            const accountNum = parseInt(hexNum, 16);
-            return `0.0.${accountNum}`;
+            return `0.0.${parseInt(hexNum, 16)}`;
         }
 
-        // 2. Read from Cache
         const cacheKey = `hedera_id_${evmAddress.toLowerCase()}`;
         const cachedId = localStorage.getItem(cacheKey);
         if (cachedId && !cachedId.toLowerCase().startsWith('0x')) return cachedId;
 
-        // 3. Mirror Node Fetch
         try {
             let response = await fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${evmAddress}`);
-            if (!response.ok) {
-                response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/accounts/${evmAddress}`);
-            }
-
+            if (!response.ok) response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/accounts/${evmAddress}`);
             if (response.ok) {
                 const data = await response.json();
                 if (data.account) {
@@ -71,20 +57,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         return null;
     }
 
-    let currentUserEvm = null;
-    let currentUserNative = null;
-
     const updateWalletUI = () => {
         const launchSubmitBtn = document.querySelector('.launch-submit-btn');
         const customWalletBtn = document.getElementById('custom-wallet-btn');
         if (!customWalletBtn) return;
 
-        if (currentUserNative) {
+        if (hc.connected && hc.accountIds.length > 0) {
+            const accountId = hc.accountIds[0];
             const copyHtml = `
-                <span class="copy-btn" data-address="${currentUserNative}" title="Copy Hedera Address" style="margin-left: 6px; padding: 2px; cursor: pointer; display: inline-flex; align-items: center; opacity: 0.8;">
+                <span class="copy-btn" data-address="${accountId}" title="Copy Hedera Address" style="margin-left: 6px; padding: 2px; cursor: pointer; display: inline-flex; align-items: center; opacity: 0.8;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                 </span>`;
-            customWalletBtn.innerHTML = `HBAR ${currentUserNative} ${copyHtml}`;
+            customWalletBtn.innerHTML = `HBAR ${accountId} ${copyHtml}`;
 
             if (launchSubmitBtn) {
                 launchSubmitBtn.innerHTML = `
@@ -103,64 +87,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
-    const getProvider = () => {
-        if (window.hashpack) return window.hashpack;
-        if (window.ethereum?.isHashPack) return window.ethereum;
-        if (window.ethereum) return window.ethereum;
-        return null;
-    };
+    // Listen for connection changes
+    hc.pairingEvent.on(() => updateWalletUI());
+    hc.disconnectionEvent.on(() => updateWalletUI());
+    hc.connectionStatusChangeEvent.on(() => updateWalletUI());
 
-    const connectWallet = async () => {
-        const provider = getProvider();
-        if (!provider) {
-            alert("No injected provider found. Please install HashPack extension.");
-            return false;
-        }
-        
-        try {
-            const accounts = await provider.request({ method: 'eth_requestAccounts' });
-            if (accounts && accounts.length > 0) {
-                currentUserEvm = accounts[0];
-                currentUserNative = await getHederaNativeId(currentUserEvm);
-                updateWalletUI();
-                return true;
-            }
-        } catch (err) {
-            console.error("Connection error:", err);
-            alert("Failed to connect wallet.");
-        }
-        return false;
-    };
-
-    // Auto-connect on load if already connected previously
-    const provider = getProvider();
-    if (provider) {
-        try {
-            const accounts = await provider.request({ method: 'eth_accounts' });
-            if (accounts && accounts.length > 0) {
-                currentUserEvm = accounts[0];
-                currentUserNative = await getHederaNativeId(currentUserEvm);
-                updateWalletUI();
-            }
-        } catch (e) {
-            console.error("Auto-connect check failed", e);
-        }
-    } else {
-        updateWalletUI();
-    }
+    // Initial UI Update
+    updateWalletUI();
 
     // Use Event Delegation for Connect/Launch
     document.addEventListener('click', async (e) => {
         const walletBtn = e.target.closest('#custom-wallet-btn');
         if (walletBtn) {
-            if (currentUserNative) {
-                if (confirm("Disconnect? (Requires clearing cache or locking wallet)")) {
-                    currentUserEvm = null;
-                    currentUserNative = null;
-                    updateWalletUI();
-                }
+            if (hc.connected) {
+                if (confirm("Disconnect wallet?")) disconnectHashConnect();
             } else {
-                connectWallet();
+                connectHashConnect();
             }
             return;
         }
@@ -170,28 +112,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         e.preventDefault();
         
-        if (!currentUserNative) {
-            const connected = await connectWallet();
-            if (!connected) return;
+        if (!hc.connected || hc.accountIds.length === 0) {
+            connectHashConnect();
+            return;
         }
 
-        console.log("CRITICAL: Executing Pure Extension Launch v3.0", currentUserNative);
+        const userAccountId = hc.accountIds[0];
+        console.log("CRITICAL: Executing Native HashConnect Launch", userAccountId);
 
         btn.disabled = true;
         btn.innerHTML = `<span>Preparing Launch...</span>`;
 
         try {
-            const provider = getProvider();
-            // Check Chain ID before proceeding
-            const chainId = await provider.request({ method: 'eth_chainId' });
-            if (chainId !== '0x128') {
-                alert("Please switch your wallet to Hedera Testnet (Chain ID 296 / 0x128) and try again.");
-                btn.disabled = false;
-                btn.innerHTML = `<span>Launch Meme</span>`;
-                return;
-            }
-
-            const userAccountIdObj = AccountId.fromString(currentUserNative);
+            const signer = hc.getSigner(userAccountId);
             
             // Goal: Fee Collection (5 HBAR)
             let treasuryIdStr = "0.0.8809059";
@@ -202,27 +135,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log("Step 1: 5 HBAR Fee to", treasuryIdStr);
             btn.innerHTML = `<span>Approve 5 HBAR Fee...</span>`;
             
-            const txIdFee = TransactionId.generate(userAccountIdObj);
-            const feeTx = new TransferTransaction()
-                .setTransactionId(txIdFee)
-                .setNodeAccountIds([AccountId.fromString("0.0.3")]) // Testnet node
-                .addHbarTransfer(userAccountIdObj, new Hbar(-5))
-                .addHbarTransfer(AccountId.fromString(treasuryIdStr), new Hbar(5))
-                .freeze();
+            const feeTx = await new TransferTransaction()
+                .addHbarTransfer(userAccountId, new Hbar(-5))
+                .addHbarTransfer(treasuryIdStr, new Hbar(5))
+                .executeWithSigner(signer);
             
-            const feeTxBytes = feeTx.toBytes();
-            const feeTxBase64 = uint8ArrayToBase64(feeTxBytes);
-            
-            // HashPack expects parameters in an array. Let's send the base64 encoded transaction bytes.
-            const feeResponse = await provider.request({
-                method: 'hedera_signAndExecuteTransaction',
-                params: [feeTxBase64]
-            });
-            console.log("Fee Tx Response:", feeResponse);
-
+            console.log("Fee Tx Sent:", feeTx.transactionId.toString());
             btn.innerHTML = `<span>Waiting for Confirmation...</span>`;
-            // Add a small delay for the network to process
-            await new Promise(r => setTimeout(r, 3000));
+            await feeTx.getReceiptWithSigner(signer);
 
             // Goal: HTS Token Creation
             console.log("Step 2: HTS Token Creation");
@@ -232,36 +152,26 @@ document.addEventListener('DOMContentLoaded', async () => {
             const symbol = document.getElementById('ticker')?.value || "MEME";
             const supplyInput = document.getElementById('initialSupply')?.value || "1000000000";
             const cleanSupply = parseInt(supplyInput.replace(/,/g, '')) || 0;
+
             const memo = `ipfs://bafybeidmeme${Math.random().toString(36).substring(7)}`;
 
-            const txIdCreate = TransactionId.generate(userAccountIdObj);
-            const createTx = new TokenCreateTransaction()
-                .setTransactionId(txIdCreate)
-                .setNodeAccountIds([AccountId.fromString("0.0.3")])
+            const createTx = await new TokenCreateTransaction()
                 .setTokenName(name)
                 .setTokenSymbol(symbol)
                 .setTokenType(TokenType.FungibleCommon)
                 .setDecimals(8)
                 .setInitialSupply(cleanSupply)
-                .setTreasuryAccountId(userAccountIdObj)
+                .setTreasuryAccountId(userAccountId)
                 .setSupplyType(TokenSupplyType.Infinite)
                 .setTokenMemo(memo)
-                .freeze();
+                .executeWithSigner(signer);
 
-            const createTxBytes = createTx.toBytes();
-            const createTxBase64 = uint8ArrayToBase64(createTxBytes);
-
-            const createResponse = await provider.request({
-                method: 'hedera_signAndExecuteTransaction',
-                params: [createTxBase64]
-            });
-            
-            console.log("Creation Tx Response:", createResponse);
+            console.log("Creation Tx Sent:", createTx.transactionId.toString());
             btn.innerHTML = `<span>Finalizing...</span>`;
-            
-            await new Promise(r => setTimeout(r, 4000));
+            const receipt = await createTx.getReceiptWithSigner(signer);
+            const newTokenId = receipt.tokenId;
 
-            alert(`SUCCESS! Your Meme Token is live.`);
+            alert(`SUCCESS! Your Meme Token is live.\nToken ID: ${newTokenId.toString()}`);
             window.location.href = 'markets.html';
 
         } catch (err) {
