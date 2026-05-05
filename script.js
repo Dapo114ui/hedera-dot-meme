@@ -1,5 +1,14 @@
-import { appkit } from './wallet.js';
-import { BrowserProvider, parseUnits, Contract, Interface } from 'ethers';
+import { hc, initHashConnect, connectHashConnect, disconnectHashConnect } from './wallet.js';
+import { 
+    TokenCreateTransaction, 
+    TransferTransaction, 
+    Hbar, 
+    AccountId, 
+    TokenType, 
+    TokenSupplyType,
+    TransactionId
+} from '@hashgraph/sdk';
+import { Interface, parseUnits } from 'ethers'; // Still used for ABI parsing in other parts
 
 // Global Error Handler for Debugging
 window.onerror = function(msg, url, line, col, error) {
@@ -16,7 +25,10 @@ const ABI_V2 = [
     "event MemeLaunched(address indexed creator, address tokenAddress, string name, string symbol, string imageUrl)",
     "event LaunchDebug(int responseCode, address tokenAddress)"
 ];
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // 0. Initialize HashConnect
+    await initHashConnect();
+
     // Helper Functions
     async function getHederaNativeId(evmAddress) {
         if (!evmAddress) return null;
@@ -52,24 +64,18 @@ document.addEventListener('DOMContentLoaded', () => {
         return null;
     }
 
-    const updateWalletButtonState = async (state) => {
+    const updateWalletUI = () => {
         const launchSubmitBtn = document.querySelector('.launch-submit-btn');
         const customWalletBtn = document.getElementById('custom-wallet-btn');
         if (!customWalletBtn) return;
 
-        if (state.isConnected && state.address) {
-            const evmAddress = state.address;
-            const nativeId = await getHederaNativeId(evmAddress);
-            
-            if (nativeId) {
-                const copyHtml = `
-                    <span class="copy-btn" data-address="${nativeId}" title="Copy Hedera Address" style="margin-left: 6px; padding: 2px; cursor: pointer; display: inline-flex; align-items: center; opacity: 0.8;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                    </span>`;
-                customWalletBtn.innerHTML = `HBAR ${nativeId} ${copyHtml}`;
-            } else {
-                customWalletBtn.innerHTML = `HBAR Connected`;
-            }
+        if (hc.connected && hc.accountIds.length > 0) {
+            const accountId = hc.accountIds[0];
+            const copyHtml = `
+                <span class="copy-btn" data-address="${accountId}" title="Copy Hedera Address" style="margin-left: 6px; padding: 2px; cursor: pointer; display: inline-flex; align-items: center; opacity: 0.8;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                </span>`;
+            customWalletBtn.innerHTML = `HBAR ${accountId} ${copyHtml}`;
 
             if (launchSubmitBtn) {
                 launchSubmitBtn.innerHTML = `
@@ -88,59 +94,63 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // Use Event Delegation for Launch Button
+    // Listen for connection changes
+    hc.pairingEvent.on(() => updateWalletUI());
+    hc.disconnectionEvent.on(() => updateWalletUI());
+    hc.connectionStatusChangeEvent.on(() => updateWalletUI());
+
+    // Initial UI Update
+    updateWalletUI();
+
+    // Use Event Delegation for Connect/Launch
     document.addEventListener('click', async (e) => {
         const btn = e.target.closest('.launch-submit-btn');
-        if (!btn) return;
+        const walletBtn = e.target.closest('#custom-wallet-btn');
 
-        e.preventDefault();
-        console.log("CRITICAL: Executing Direct Injected Launch v2.3");
-
-        // 1. Direct Provider Detection (Bypassing AppKit Bridge)
-        const provider = window.hashpack || (window.ethereum?.isHashPack ? window.ethereum : window.ethereum);
-        
-        console.log("Direct Provider Audit:", {
-            isNativeHashPack: !!window.hashpack,
-            isEVMHashPack: !!window.ethereum?.isHashPack,
-            usingProvider: !!provider
-        });
-
-        if (!provider) {
-            alert("HashPack Extension not detected. Please ensure it is installed and UNLOCKED.");
+        if (walletBtn) {
+            if (hc.connected) {
+                if (confirm("Disconnect wallet?")) disconnectHashConnect();
+            } else {
+                connectHashConnect();
+            }
             return;
         }
 
+        if (!btn) return;
+
+        e.preventDefault();
+        
+        if (!hc.connected || hc.accountIds.length === 0) {
+            connectHashConnect();
+            return;
+        }
+
+        const userAccountId = hc.accountIds[0];
+        console.log("CRITICAL: Executing Native HashConnect Launch v3.0", userAccountId);
+
         btn.disabled = true;
-        btn.innerHTML = `<span>Connecting to Wallet...</span>`;
+        btn.innerHTML = `<span>Preparing Launch...</span>`;
 
         try {
-            // 2. Ethers Wrapper
-            const ethersProvider = new BrowserProvider(provider);
-            const signer = await ethersProvider.getSigner();
-            const userAddress = await signer.getAddress();
+            const signer = hc.getSigner(userAccountId);
             
-            console.log("Wallet Access Granted:", userAddress);
-
             // Goal: Fee Collection (5 HBAR)
-            let treasuryId = "0.0.8809059";
+            let treasuryIdStr = "0.0.8809059";
             try {
-                treasuryId = import.meta.env.VITE_TREASURY_ACCOUNT_ID || treasuryId;
+                treasuryIdStr = import.meta.env.VITE_TREASURY_ACCOUNT_ID || treasuryIdStr;
             } catch (e) {}
             
-            const treasuryEvm = `0x0000000000000000000000000000000000${parseInt(treasuryId.split('.')[2]).toString(16).padStart(6, '0')}`;
-
-            console.log("Step 1: 5 HBAR Fee to", treasuryEvm);
+            console.log("Step 1: 5 HBAR Fee to", treasuryIdStr);
             btn.innerHTML = `<span>Approve 5 HBAR Fee...</span>`;
             
-            const feeTx = await signer.sendTransaction({
-                to: treasuryEvm,
-                value: parseUnits("5", 8), // 5 HBAR (8 decimals in HTS/EVM context for Hedera)
-                gasLimit: 1000000
-            });
+            const feeTx = await new TransferTransaction()
+                .addHbarTransfer(userAccountId, new Hbar(-5))
+                .addHbarTransfer(treasuryIdStr, new Hbar(5))
+                .executeWithSigner(signer);
             
-            console.log("Fee Tx Sent:", feeTx.hash);
+            console.log("Fee Tx Sent:", feeTx.transactionId.toString());
             btn.innerHTML = `<span>Waiting for Confirmation...</span>`;
-            await feeTx.wait();
+            await feeTx.getReceiptWithSigner(signer);
 
             // Goal: HTS Token Creation
             console.log("Step 2: HTS Token Creation");
@@ -149,43 +159,31 @@ document.addEventListener('DOMContentLoaded', () => {
             const name = document.getElementById('tokenName')?.value || "My Meme";
             const symbol = document.getElementById('ticker')?.value || "MEME";
             const supplyInput = document.getElementById('initialSupply')?.value || "1000000000";
-            const cleanSupply = supplyInput.replace(/,/g, '') || "0";
-            const totalAmount = parseUnits(cleanSupply, 8);
-
-            const htsInterface = new Interface([
-                "function createFungibleToken((string,string,address,string,bool,uint32,bool,(uint256,(bool,address,bytes,bytes,address))[],(uint32,address,uint32)),uint256,uint256) payable returns (int64, address)"
-            ]);
+            const cleanSupply = parseInt(supplyInput.replace(/,/g, '')) || 0;
 
             const memo = `ipfs://bafybeidmeme${Math.random().toString(36).substring(7)}`;
-            const tokenData = [
-                name, symbol, userAddress, memo, 
-                false, 0, false, [], 
-                [0, "0x0000000000000000000000000000000000000000", 7776000]
-            ];
 
-            const encodedData = htsInterface.encodeFunctionData("createFungibleToken", [
-                tokenData,
-                totalAmount,
-                8
-            ]);
+            const createTx = await new TokenCreateTransaction()
+                .setTokenName(name)
+                .setTokenSymbol(symbol)
+                .setTokenType(TokenType.FungibleCommon)
+                .setDecimals(8)
+                .setInitialSupply(cleanSupply)
+                .setTreasuryAccountId(userAccountId)
+                .setSupplyType(TokenSupplyType.Infinite)
+                .setTokenMemo(memo)
+                .executeWithSigner(signer);
 
-            const createTx = await signer.sendTransaction({
-                to: "0x0000000000000000000000000000000000000167",
-                data: encodedData,
-                value: parseUnits("25", 8), // 25 HBAR creation fee
-                gasLimit: 3000000
-            });
-
-            console.log("Creation Tx Sent:", createTx.hash);
+            console.log("Creation Tx Sent:", createTx.transactionId.toString());
             btn.innerHTML = `<span>Finalizing...</span>`;
-            await createTx.wait();
+            const receipt = await createTx.getReceiptWithSigner(signer);
+            const newTokenId = receipt.tokenId;
 
-            alert(`SUCCESS! Your Meme Token is live.`);
+            alert(`SUCCESS! Your Meme Token is live.\nToken ID: ${newTokenId.toString()}`);
             window.location.href = 'markets.html';
 
-
         } catch (err) {
-            console.error("Direct Launch Error:", err);
+            console.error("Native Launch Error:", err);
             alert(`Launch Failed: ${err.message || "User rejected or wallet error"}`);
             btn.disabled = false;
             btn.innerHTML = `<span>Launch Meme</span>`;
