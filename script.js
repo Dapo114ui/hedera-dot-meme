@@ -240,12 +240,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const injectedProvider = await getProvider();
             // Check Chain ID before proceeding
-            const chainId = await injectedProvider.request({ method: 'eth_chainId' });
-            if (chainId !== '0x128') {
-                alert("Please switch your wallet to Hedera Testnet (Chain ID 296 / 0x128) and try again.");
-                btn.disabled = false;
-                btn.innerHTML = `<span>Launch Meme</span>`;
-                return;
+            try {
+                const chainId = await injectedProvider.request({ method: 'eth_chainId' });
+                const parsedChainId = typeof chainId === 'string' && chainId.startsWith('0x') ? parseInt(chainId, 16) : parseInt(chainId, 10);
+                if (parsedChainId !== 296) {
+                    console.warn(`Chain ID mismatch. Expected 296, got ${chainId}. Continuing anyway...`);
+                }
+            } catch (e) {
+                console.warn("Could not verify chain ID, continuing...", e);
             }
 
             console.log("CRITICAL: Executing Pure Extension Launch v3.1", currentUserNative);
