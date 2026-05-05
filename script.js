@@ -183,48 +183,6 @@ document.addEventListener('DOMContentLoaded', () => {
             alert(`SUCCESS! Your Meme Token is live.`);
             window.location.href = 'markets.html';
 
-            // Goal: HTS Token Creation
-            console.log("Direct HTS Creation: 25 HBAR fee");
-            btn.innerHTML = `<span>Launching Meme...</span>`;
-            
-            const name = document.getElementById('tokenName')?.value;
-            const symbol = document.getElementById('ticker')?.value;
-            const supplyInput = document.getElementById('initialSupply')?.value;
-            const cleanSupply = supplyInput.replace(/,/g, '') || "0";
-            const totalAmount = parseUnits(cleanSupply, 8);
-
-            const htsInterface = new Interface([
-                "function createFungibleToken((string,string,address,string,bool,uint32,bool,(uint256,(bool,address,bytes,bytes,address))[],(uint32,address,uint32)),uint256,uint256) payable returns (int64, address)"
-            ]);
-
-            const memo = `ipfs://bafybeidmeme${Math.random().toString(36).substring(7)}`;
-
-            const tokenData = [
-                name, symbol, userAddress, memo, 
-                false, 0, false, [], 
-                [0, "0x0000000000000000000000000000000000000000", 7776000]
-            ];
-
-            const encodedData = htsInterface.encodeFunctionData("createFungibleToken", [
-                tokenData,
-                totalAmount,
-                8
-            ]);
-
-            await provider.request({
-                method: 'eth_sendTransaction',
-                params: [{
-                    from: userAddress,
-                    to: "0x0000000000000000000000000000000000000167",
-                    data: encodedData,
-                    value: '0x9502F900', // 25 HBAR creation fee
-                    gas: '0x2dc6c0',     // 3,000,000
-                    chainId: '0x128'
-                }]
-            });
-
-            alert(`SUCCESS! Your Meme Token is live.`);
-            window.location.href = 'markets.html';
 
         } catch (err) {
             console.error("Direct Launch Error:", err);
