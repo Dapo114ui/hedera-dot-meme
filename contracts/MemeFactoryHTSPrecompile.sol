@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-// Minimal interface for Hedera Token Service Precompile (0x167)
 interface IHederaTokenService {
     struct TokenKey {
         uint256 keyType;
@@ -45,6 +44,7 @@ contract MemeFactoryHTSPrecompile {
     address constant PRECOMPILE_ADDRESS = address(0x167);
     
     event MemeLaunched(address indexed creator, address tokenAddress, string name, string symbol, string imageUrl);
+    event DebugResponse(int64 responseCode);
 
     function createMemeToken(
         string memory name, 
@@ -55,7 +55,6 @@ contract MemeFactoryHTSPrecompile {
         
         IHederaTokenService.TokenKey[] memory keys = new IHederaTokenService.TokenKey[](1);
         
-        // Admin Key (Inherit from sender so the creator can manage it)
         keys[0] = IHederaTokenService.TokenKey({
             keyType: 1, // ADMIN
             key: IHederaTokenService.KeyValue({
@@ -78,7 +77,7 @@ contract MemeFactoryHTSPrecompile {
             symbol: symbol,
             treasury: msg.sender,
             memo: imageUrl,
-            tokenSupplyType: false, // INFINITE
+            tokenSupplyType: false,
             maxSupply: 0,
             freezeDefault: false,
             tokenKeys: keys,
@@ -88,13 +87,17 @@ contract MemeFactoryHTSPrecompile {
         (int64 responseCode, address tokenAddress) = IHederaTokenService(PRECOMPILE_ADDRESS).createFungibleToken(
             token,
             initialSupply,
-            8 // Decimals
+            8
         );
 
-        require(responseCode == 22, "HTS Precompile Failed"); // 22 is SUCCESS code in Hedera
+        emit DebugResponse(responseCode);
+        require(responseCode == 22, "HTS Precompile Failed"); // 22 is SUCCESS
 
         emit MemeLaunched(msg.sender, tokenAddress, name, symbol, imageUrl);
         
         return tokenAddress;
     }
+
+    // Allow contract to receive HBAR so it can pay for HTS Precompile fees natively
+    receive() external payable {}
 }
