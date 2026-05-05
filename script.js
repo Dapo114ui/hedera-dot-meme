@@ -103,17 +103,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
-    const getProvider = () => {
+    let hashpackProvider = null;
+    
+    // EIP-6963 Provider Discovery
+    window.addEventListener("eip6963:announceProvider", (event) => {
+        if (event.detail?.info?.name?.toLowerCase().includes('hashpack')) {
+            hashpackProvider = event.detail.provider;
+        }
+    });
+    window.dispatchEvent(new Event("eip6963:requestProvider"));
+
+    const getProvider = async () => {
+        // Wait briefly in case EIP-6963 is still announcing
+        if (!hashpackProvider && !window.ethereum && !window.hashpack) {
+            await new Promise(r => setTimeout(r, 500));
+        }
+        
+        if (hashpackProvider) return hashpackProvider;
         if (window.hashpack) return window.hashpack;
+        if (window.hashconnect) return window.hashconnect;
         if (window.ethereum?.isHashPack) return window.ethereum;
         if (window.ethereum) return window.ethereum;
         return null;
     };
 
     const connectWallet = async () => {
-        const provider = getProvider();
+        const provider = await getProvider();
         if (!provider) {
-            alert("No injected provider found. Please install HashPack extension.");
+            alert("No HashPack provider found. Please ensure the HashPack extension is installed and unlocked.");
             return false;
         }
         
@@ -133,21 +150,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     // Auto-connect on load if already connected previously
-    const provider = getProvider();
-    if (provider) {
-        try {
-            const accounts = await provider.request({ method: 'eth_accounts' });
-            if (accounts && accounts.length > 0) {
-                currentUserEvm = accounts[0];
-                currentUserNative = await getHederaNativeId(currentUserEvm);
-                updateWalletUI();
+    setTimeout(async () => {
+        const provider = await getProvider();
+        if (provider) {
+            try {
+                const accounts = await provider.request({ method: 'eth_accounts' });
+                if (accounts && accounts.length > 0) {
+                    currentUserEvm = accounts[0];
+                    currentUserNative = await getHederaNativeId(currentUserEvm);
+                    updateWalletUI();
+                }
+            } catch (e) {
+                console.error("Auto-connect check failed", e);
             }
-        } catch (e) {
-            console.error("Auto-connect check failed", e);
+        } else {
+            updateWalletUI();
         }
-    } else {
-        updateWalletUI();
-    }
+    }, 500);
 
     // Use Event Delegation for Connect/Launch
     document.addEventListener('click', async (e) => {
@@ -181,7 +200,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         btn.innerHTML = `<span>Preparing Launch...</span>`;
 
         try {
-            const provider = getProvider();
+            const provider = await getProvider();
             // Check Chain ID before proceeding
             const chainId = await provider.request({ method: 'eth_chainId' });
             if (chainId !== '0x128') {
