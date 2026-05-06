@@ -18,10 +18,11 @@ window.onerror = function(msg, url, line, col, error) {
 // Global check for debugging
 console.log("Hedera dot meme script v3.0 (Pure Extension) loaded");
 
-const CONTRACT_ADDRESS_V2 = "0x1D19c97e7DCF1cF538030a9b4BAc4Ce1B6A27378"; // Prefunded HTS Precompile Contract
+const CONTRACT_ADDRESS_V2 = "0x9d0473a2502cD56Acc0017fA496ff2F63372B197"; // HTS Delegate Contract
 const ABI_V2 = [
     "function createMemeToken(string name, string symbol, int64 initialSupply, string imageUrl) returns (address)",
-    "event MemeLaunched(address indexed creator, address tokenAddress, string name, string symbol, string imageUrl)"
+    "event MemeLaunched(address indexed creator, address tokenAddress, string name, string symbol, string imageUrl)",
+    "event DebugResponse(int64 responseCode)"
 ];
 document.addEventListener('DOMContentLoaded', async () => {
 
