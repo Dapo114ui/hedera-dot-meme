@@ -18,7 +18,7 @@ window.onerror = function(msg, url, line, col, error) {
 // Global check for debugging
 console.log("Hedera dot meme script v3.0 (Pure Extension) loaded");
 
-const CONTRACT_ADDRESS_V2 = "0x544F5E505e687c37A9d11A6Ee74B309644B4D780"; // HTS Contract (Self-Treasury)
+const CONTRACT_ADDRESS_V2 = "0x13d2D2400D001cFE3d4941adf209F71376D3ADF9"; // HTS Contract (Forwards HBAR)
 const ABI_V2 = [
     "function createMemeToken(string name, string symbol, int64 initialSupply, string imageUrl) returns (address)",
     "event MemeLaunched(address indexed creator, address tokenAddress, string name, string symbol, string imageUrl)"
@@ -261,7 +261,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const name = document.getElementById('tokenName')?.value || "My Meme";
             const symbol = document.getElementById('ticker')?.value || "MEME";
             const supplyInput = document.getElementById('initialSupply')?.value || "1000000000";
-            const cleanSupply = parseInt(supplyInput.replace(/,/g, '')) || 0;
+            let cleanSupply = parseInt(supplyInput.replace(/,/g, '')) || 0;
+            cleanSupply = cleanSupply * 100000000; // 8 decimals multiplier
             const memo = `ipfs://bafybeidmeme${Math.random().toString(36).substring(7)}`;
 
             const contract = new Contract(CONTRACT_ADDRESS_V2, ABI_V2, signer);

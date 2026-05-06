@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <script>
+        setTimeout(() => {
+            console.log("window.hashpack:", window.hashpack);
+            console.log("window.hashconnect:", window.hashconnect);
+            console.log("window.ethereum:", window.ethereum);
+            if (window.hashpack) {
+                console.log("hashpack methods:", Object.keys(window.hashpack));
+            }
+            if (window.hashconnect) {
+                console.log("hashconnect methods:", Object.keys(window.hashconnect));
+            }
+            document.body.innerHTML = "<h1>Check Console</h1>";
+        }, 1000);
+    </script>
+</body>
+</html>
