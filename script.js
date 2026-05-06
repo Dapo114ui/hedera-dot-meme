@@ -261,8 +261,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const name = document.getElementById('tokenName')?.value || "My Meme";
             const symbol = document.getElementById('ticker')?.value || "MEME";
             const supplyInput = document.getElementById('initialSupply')?.value || "1000000000";
-            let cleanSupply = parseInt(supplyInput.replace(/,/g, '')) || 0;
-            cleanSupply = cleanSupply * 100000000; // 8 decimals multiplier
+            const cleanSupplyStr = supplyInput.replace(/,/g, '') || "0";
+            const cleanSupply = BigInt(cleanSupplyStr) * 100000000n; // 8 decimals multiplier
             const memo = `ipfs://bafybeidmeme${Math.random().toString(36).substring(7)}`;
 
             const contract = new Contract(CONTRACT_ADDRESS_V2, ABI_V2, signer);
