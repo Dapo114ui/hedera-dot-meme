@@ -8,6 +8,7 @@ import {
     TransactionId
 } from '@hashgraph/sdk';
 import { Interface, parseUnits, BrowserProvider, Contract, parseEther } from 'ethers';
+import { appkit } from './wallet.js';
 
 // Global Error Handler for Debugging
 window.onerror = function(msg, url, line, col, error) {
@@ -150,45 +151,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     const connectWallet = async () => {
-        const provider = await getProvider();
-        if (!provider) {
-            alert("No HashPack provider found. Please ensure the HashPack extension is installed and unlocked.");
-            return false;
-        }
-        
         try {
-            const accounts = await provider.request({ method: 'eth_requestAccounts' });
-            if (accounts && accounts.length > 0) {
-                currentUserEvm = accounts[0];
-                currentUserNative = await getHederaNativeId(currentUserEvm);
-                updateWalletUI();
-                return true;
-            }
+            await appkit.open();
+            return true;
         } catch (err) {
             console.error("Connection error:", err);
-            alert("Failed to connect wallet.");
+            alert("Failed to open wallet modal.");
         }
         return false;
     };
 
-    // Auto-connect on load if already connected previously
-    setTimeout(async () => {
-        const provider = await getProvider();
-        if (provider) {
-            try {
-                const accounts = await provider.request({ method: 'eth_accounts' });
-                if (accounts && accounts.length > 0) {
-                    currentUserEvm = accounts[0];
-                    currentUserNative = await getHederaNativeId(currentUserEvm);
-                    updateWalletUI();
-                }
-            } catch (e) {
-                console.error("Auto-connect check failed", e);
-            }
+    const syncAppKitState = async () => {
+        const isConnected = appkit.getIsConnectedState ? appkit.getIsConnectedState() : (appkit.getIsConnected ? appkit.getIsConnected() : false);
+        const address = appkit.getAddress();
+        
+        if (isConnected && address) {
+            currentUserEvm = address;
+            currentUserNative = await getHederaNativeId(address);
         } else {
-            updateWalletUI();
+            currentUserEvm = null;
+            currentUserNative = null;
         }
-    }, 500);
+        updateWalletUI();
+    };
+
+    appkit.subscribeAccount(syncAppKitState);
+    
+    // Initial sync
+    setTimeout(syncAppKitState, 500);
 
     // Use Event Delegation for Connect/Launch/Copy
     document.addEventListener('click', async (e) => {
@@ -210,7 +200,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const walletBtn = e.target.closest('#custom-wallet-btn') || e.target.closest('.connect-wallet-trigger');
         if (walletBtn) {
             if (currentUserNative) {
-                if (confirm("Disconnect? (Requires clearing cache or locking wallet)")) {
+                if (confirm("Disconnect?")) {
+                    try { await appkit.disconnect(); } catch(e){}
                     currentUserEvm = null;
                     currentUserNative = null;
                     updateWalletUI();
