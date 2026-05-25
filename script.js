@@ -1,3 +1,4 @@
+import { Buffer } from 'buffer';
 import { 
     TokenCreateTransaction, 
     TransferTransaction, 
@@ -228,25 +229,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         btn.innerHTML = `<span>Preparing Launch...</span>`;
 
         try {
-            const injectedProvider = await getProvider();
-            // Check Chain ID before proceeding
-            try {
-                const chainId = await injectedProvider.request({ method: 'eth_chainId' });
-                const parsedChainId = typeof chainId === 'string' && chainId.startsWith('0x') ? parseInt(chainId, 16) : parseInt(chainId, 10);
-                if (parsedChainId !== 296) {
-                    console.warn(`Chain ID mismatch. Expected 296, got ${chainId}. Continuing anyway...`);
-                }
-            } catch (e) {
-                console.warn("Could not verify chain ID, continuing...", e);
-            }
+            const universalProvider = appkit.getWalletProvider();
+            if (!universalProvider) throw new Error("Wallet provider not initialized.");
 
-            console.log("CRITICAL: Executing HTS Precompile Launch v4.0", currentUserNative);
-            
-            const ethersProvider = new BrowserProvider(injectedProvider);
-            const signer = await ethersProvider.getSigner();
-
-            // Goal: HTS Token Creation
-            console.log("Step 1: HTS Token Creation via Precompile");
+            console.log("CRITICAL: Executing Native Launch via UniversalProvider v5.0", currentUserNative);
             btn.innerHTML = `<span>Approving Meme Launch...</span>`;
 
             const name = document.getElementById('tokenName')?.value || "My Meme";
@@ -255,20 +241,55 @@ document.addEventListener('DOMContentLoaded', async () => {
             const cleanSupply = parseInt(supplyInput.replace(/,/g, '')) || 0;
             const memo = `ipfs://bafybeidmeme${Math.random().toString(36).substring(7)}`;
 
-            const contract = new Contract(CONTRACT_ADDRESS_V2, ABI_V2, signer);
-            
-            // Call the contract without passing any value! This avoids the decimal panic in HashPack.
-            const createTx = await contract.createMemeToken(name, symbol, cleanSupply, memo, {
-                gasLimit: 3000000 // High gas limit for HTS ops
-            });
-            
-            console.log("Creation Tx Response:", createTx.hash);
-            btn.innerHTML = `<span>Finalizing...</span>`;
-            
-            const receipt = await createTx.wait();
-            console.log("Transaction Confirmed:", receipt);
+            // Build standard Hedera TransferTransaction for the fee (exactly 500000000 tinybars)
+            const feeTx = new TransferTransaction()
+                .addHbarTransfer(currentUserNative, Hbar.fromTinybars(-500000000))
+                .addHbarTransfer('0.0.8809059', Hbar.fromTinybars(500000000))
+                .setTransactionId(TransactionId.generate(currentUserNative))
+                .setNodeAccountIds([new AccountId(3)]); // Use testnet node 3
 
-            alert(`SUCCESS! Your Meme Token is live.\nTransaction Hash: ${receipt.hash}`);
+            feeTx.freeze();
+            const feeTxBytes = Buffer.from(feeTx.toBytes()).toString('base64');
+
+            // Contract execute transaction (requires resolving EVM address to Hedera Contract ID)
+            let contractId = "0.0.4633728"; // Fallback ID if lookup fails
+            try {
+                const res = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/${CONTRACT_ADDRESS_V2}`);
+                const data = await res.json();
+                if (data.contract_id) contractId = data.contract_id;
+            } catch (e) {
+                console.warn("Could not resolve Contract ID from EVM address:", e);
+            }
+
+            const contractTx = new TokenCreateTransaction()
+                .setTokenName(name)
+                .setTokenSymbol(symbol)
+                .setDecimals(18)
+                .setInitialSupply(cleanSupply)
+                .setTreasuryAccountId(currentUserNative)
+                .setAdminKey(AccountId.fromString(currentUserNative).publicKey)
+                .setSupplyKey(AccountId.fromString(currentUserNative).publicKey)
+                .setTransactionId(TransactionId.generate(currentUserNative))
+                .setNodeAccountIds([new AccountId(3)]);
+
+            contractTx.freeze();
+            const contractTxBytes = Buffer.from(contractTx.toBytes()).toString('base64');
+
+            console.log("Step 1: Sending Native Hedera Payload");
+
+            // Explicit Account Binding: hedera:testnet:${userAccountId}
+            const requestParams = {
+                method: 'hedera_signAndExecuteTransaction',
+                params: {
+                    signerAccountId: `hedera:testnet:${currentUserNative}`,
+                    transactionList: [feeTxBytes, contractTxBytes]
+                }
+            };
+
+            const response = await universalProvider.request(requestParams, 'hedera:testnet');
+            console.log("Transaction Confirmed:", response);
+
+            alert(`SUCCESS! Your Meme Token is live.`);
             window.location.href = 'markets.html';
 
         } catch (err) {
