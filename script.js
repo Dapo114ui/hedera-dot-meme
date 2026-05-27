@@ -20,7 +20,7 @@ window.onerror = function(msg, url, line, col, error) {
 // Global check for debugging
 console.log("Hedera dot meme script v5.0 (HTS Self-Treasury Contract) loaded!");
 
-const CONTRACT_ADDRESS_V2 = "0x544F5E505e687c37A9d11A6Ee74B309644B4D780"; // HTS Contract (Self-Treasury)
+const CONTRACT_ADDRESS_V2 = "0x2F94D2B01D28f5c80F7a214b39fCdFb401767FF1"; // HTS Contract (Self-Treasury)
 const ABI_V2 = [
     "function createMemeToken(string name, string symbol, int64 initialSupply, string imageUrl) returns (address)",
     "event MemeLaunched(address indexed creator, address tokenAddress, string name, string symbol, string imageUrl)"
