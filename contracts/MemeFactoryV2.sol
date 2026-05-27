@@ -104,16 +104,9 @@ contract MemeFactory {
             expiry: expiry
         });
 
-        // 1% Fractional fee to treasury EVM address
-        IHederaTokenService.FractionalFee[] memory fractionalFees = new IHederaTokenService.FractionalFee[](1);
-        fractionalFees[0] = IHederaTokenService.FractionalFee({
-            numerator: 1,
-            denominator: 100,
-            minimumAmount: 0,
-            maximumAmount: 0,
-            netOfTransfers: false,
-            feeCollector: treasury
-        });
+        // Removed FractionalFee because setting a feeCollector different from the token treasury 
+        // without their explicit signature causes HTS to revert the transaction.
+        IHederaTokenService.FractionalFee[] memory fractionalFees = new IHederaTokenService.FractionalFee[](0);
 
         IHederaTokenService.FixedFee[] memory fixedFees = new IHederaTokenService.FixedFee[](0);
 
