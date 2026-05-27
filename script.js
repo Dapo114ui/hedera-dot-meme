@@ -18,9 +18,9 @@ window.onerror = function(msg, url, line, col, error) {
 };
 
 // Global check for debugging
-console.log("Hedera dot meme script v5.0 (HTS Self-Treasury Contract) loaded!");
+console.log("Hedera dot meme script v5.0 (HTS Auto-Transfer Contract) loaded!");
 
-const CONTRACT_ADDRESS_V2 = "0xc992F5906c2C821a4ad57B8B0A294c8230dA57f3"; // HTS Contract (Fixed receive)
+const CONTRACT_ADDRESS_V2 = "0xD612ef7fb286F94fd5b6BD87603A4EE4890B30D2"; // HTS Contract (Fixed Auto-Transfer)
 const ABI_V2 = [
     "function createMemeToken(string name, string symbol, int64 initialSupply, string imageUrl) returns (address)",
     "event MemeLaunched(address indexed creator, address tokenAddress, string name, string symbol, string imageUrl)"

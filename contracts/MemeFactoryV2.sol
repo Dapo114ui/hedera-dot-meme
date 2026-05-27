@@ -63,6 +63,12 @@ interface IHederaTokenService {
         uint256 initialTotalSupply,
         uint256 decimals
     ) external payable returns (int64 responseCode, address tokenAddress);
+    function transferToken(
+        address token,
+        address sender,
+        address recipient,
+        int64 amount
+    ) external returns (int64 responseCode);
 }
 
 contract MemeFactory {
@@ -90,10 +96,11 @@ contract MemeFactory {
             autoRenewPeriod: 7776000 // 90 days
         });
 
+        // Set treasury to THIS contract to bypass signature requirements from EVM caller
         IHederaTokenService.HederaToken memory token = IHederaTokenService.HederaToken({
             name: name,
             symbol: symbol,
-            treasury: msg.sender,
+            treasury: address(this),
             memo: imageUrl,
             tokenSupplyType: false,
             maxSupply: 0,
@@ -105,9 +112,6 @@ contract MemeFactory {
         // HTS allows uint256 for createFungibleToken.
         uint256 totalTokens = uint256(uint64(initialSupply)) * (10**8);
 
-        // We use createFungibleToken instead of createFungibleTokenWithCustomFees 
-        // to avoid HTS signature requirements for fee collectors.
-        // The 25 HBAR launch fee is kept in this contract's balance or sent to treasury.
         (int64 responseCode, address tokenAddress) = IHederaTokenService(PRECOMPILE_ADDRESS).createFungibleToken{value: msg.value}(
             token,
             totalTokens,
@@ -117,13 +121,23 @@ contract MemeFactory {
         emit DebugResponse(responseCode);
         require(responseCode == 22, "HTS Precompile Failed"); // 22 is SUCCESS
 
+        // Transfer all minted tokens from this contract to the creator
+        // REQUIRES the creator to have open auto-association slots!
+        int64 transferResponse = IHederaTokenService(PRECOMPILE_ADDRESS).transferToken(
+            tokenAddress,
+            address(this),
+            msg.sender,
+            int64(int256(totalTokens))
+        );
+        require(transferResponse == 22, "Token Transfer Failed (No Auto-Association Slots?)");
+
         emit MemeLaunched(msg.sender, tokenAddress, name, symbol, imageUrl);
         
-        // Refund excess HBAR back to the creator
+        // Send the remaining HBAR fee (after HTS precompile costs) to the platform treasury
         uint256 excess = address(this).balance;
-        if (excess > 0) {
-            (bool success, ) = msg.sender.call{value: excess}("");
-            require(success, "Refund failed");
+        if (excess > 0 && treasury != address(0)) {
+            (bool success, ) = treasury.call{value: excess}("");
+            require(success, "Treasury transfer failed");
         }
 
         return tokenAddress;
