@@ -241,53 +241,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             const cleanSupply = parseInt(supplyInput.replace(/,/g, '')) || 0;
             const memo = `ipfs://bafybeidmeme${Math.random().toString(36).substring(7)}`;
 
-            // Build standard Hedera TransferTransaction for the fee (exactly 500000000 tinybars)
-            const feeTx = new TransferTransaction()
-                .addHbarTransfer(currentUserNative, Hbar.fromTinybars(-500000000))
-                .addHbarTransfer('0.0.8809059', Hbar.fromTinybars(500000000))
-                .setTransactionId(TransactionId.generate(currentUserNative))
-                .setNodeAccountIds([new AccountId(3)]); // Use testnet node 3
+            const ethersProvider = new BrowserProvider(universalProvider);
+            const signer = await ethersProvider.getSigner();
+            const contract = new Contract(CONTRACT_ADDRESS_V2, ABI_V2, signer);
+            
+            console.log("Step 1: Sending EVM Payload with 0 HBAR value");
 
-            feeTx.freeze();
-            const feeTxBytes = Buffer.from(feeTx.toBytes()).toString('base64');
-
-            // Contract execute transaction (requires resolving EVM address to Hedera Contract ID)
-            let contractId = "0.0.4633728"; // Fallback ID if lookup fails
-            try {
-                const res = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/${CONTRACT_ADDRESS_V2}`);
-                const data = await res.json();
-                if (data.contract_id) contractId = data.contract_id;
-            } catch (e) {
-                console.warn("Could not resolve Contract ID from EVM address:", e);
-            }
-
-            const contractTx = new TokenCreateTransaction()
-                .setTokenName(name)
-                .setTokenSymbol(symbol)
-                .setDecimals(18)
-                .setInitialSupply(cleanSupply)
-                .setTreasuryAccountId(currentUserNative)
-                .setAdminKey(AccountId.fromString(currentUserNative).publicKey)
-                .setSupplyKey(AccountId.fromString(currentUserNative).publicKey)
-                .setTransactionId(TransactionId.generate(currentUserNative))
-                .setNodeAccountIds([new AccountId(3)]);
-
-            contractTx.freeze();
-            const contractTxBytes = Buffer.from(contractTx.toBytes()).toString('base64');
-
-            console.log("Step 1: Sending Native Hedera Payload");
-
-            // Explicit Account Binding: hedera:testnet:${userAccountId}
-            const requestParams = {
-                method: 'hedera_signAndExecuteTransaction',
-                params: {
-                    signerAccountId: `hedera:testnet:${currentUserNative}`,
-                    transactionList: [feeTxBytes, contractTxBytes]
-                }
-            };
-
-            const response = await universalProvider.request(requestParams, 'hedera:testnet');
-            console.log("Transaction Confirmed:", response);
+            const createTx = await contract.createMemeToken(name, symbol, cleanSupply, memo, {
+                value: 0,
+                gasLimit: 3000000
+            });
+            
+            console.log("Creation Tx Response:", createTx.hash);
+            btn.innerHTML = `<span>Finalizing...</span>`;
+            
+            const receipt = await createTx.wait();
+            console.log("Transaction Confirmed:", receipt);
 
             alert(`SUCCESS! Your Meme Token is live.`);
             window.location.href = 'markets.html';

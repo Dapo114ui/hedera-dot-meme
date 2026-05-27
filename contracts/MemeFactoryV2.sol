@@ -78,10 +78,8 @@ contract MemeFactory {
         treasury = _treasury;
     }
 
-    // Added imageUrl as an input parameter and made it payable for the launch fee
-    function createMemeToken(string memory name, string memory symbol, uint256 initialSupply, string memory imageUrl) external payable returns (address) {
-        require(msg.value >= launchFee, "Insufficient launch fee (5 HBAR required)");
-
+    // Added imageUrl as an input parameter
+    function createMemeToken(string memory name, string memory symbol, uint256 initialSupply, string memory imageUrl) external returns (address) {
         // Create token with 1% tax sent to treasury
         MemeToken newToken = new MemeToken(name, symbol, initialSupply, msg.sender, treasury);
         
@@ -91,7 +89,7 @@ contract MemeFactory {
         return address(newToken);
     }
 
-    // Allow the treasury to withdraw collected fees
+    // Allow the treasury to withdraw collected fees (if any native HBAR accidentally sent here)
     function withdrawFees() external {
         require(msg.sender == treasury, "Only treasury can withdraw fees");
         payable(treasury).transfer(address(this).balance);
