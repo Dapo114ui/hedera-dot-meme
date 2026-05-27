@@ -174,24 +174,48 @@ document.addEventListener('DOMContentLoaded', async () => {
             let isConnected = false;
             let address = null;
 
-            if (appkit && typeof appkit.getAccount === 'function') {
-                const account = appkit.getAccount();
-                isConnected = account.isConnected;
-                address = account.address;
-            } else {
+            try {
+                if (appkit && typeof appkit.getAccount === 'function') {
+                    const account = appkit.getAccount();
+                    isConnected = account.isConnected;
+                    address = account.address;
+                }
+            } catch (internalErr) {
+                console.warn("AppKit getAccount internal error:", internalErr);
+            }
+
+            if (!isConnected && appkit) {
                 isConnected = appkit.getIsConnectedState ? appkit.getIsConnectedState() : (appkit.getIsConnected ? appkit.getIsConnected() : false);
                 address = appkit.getAddress ? appkit.getAddress() : null;
             }
 
-            if (address && address.includes(':')) {
-                // Parse CAIP-10 string (e.g. hedera:testnet:0.0.1234)
-                const parts = address.split(':');
-                address = parts[parts.length - 1];
+            if (address) {
+                // Forcefully strip CAIP-10 prefixes via Regex
+                address = address.replace(/eip155:/gi, '').replace(/hedera:/gi, '').replace(/testnet:/gi, '').replace(/mainnet:/gi, '');
+                if (address.includes(':')) {
+                    const parts = address.split(':');
+                    address = parts[parts.length - 1];
+                }
             }
             
             if (isConnected && address) {
                 currentUserEvm = address;
-                currentUserNative = await getHederaNativeId(address);
+                
+                try {
+                    currentUserNative = await getHederaNativeId(address);
+                } catch(e) {
+                    console.warn("getHederaNativeId threw an error:", e);
+                }
+
+                // UI Fallback: If mirror node lookup fails, use the raw address
+                if (!currentUserNative) {
+                    if (address.startsWith('0x') && address.length > 20) {
+                        currentUserNative = address.substring(0, 5) + '...' + address.substring(address.length - 4);
+                    } else {
+                        currentUserNative = address;
+                    }
+                }
+
                 console.log('Parsed ID:', currentUserNative, '| EVM:', address);
             } else {
                 console.log('Wallet disconnected or missing address:', { isConnected, address });
