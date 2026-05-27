@@ -20,7 +20,7 @@ window.onerror = function(msg, url, line, col, error) {
 // Global check for debugging
 console.log("Hedera dot meme script v5.0 (HTS Self-Treasury Contract) loaded!");
 
-const CONTRACT_ADDRESS_V2 = "0xCB075b23cFf601E7CA195b7B72bf97A0eD72d62F"; // HTS Contract (Self-Treasury)
+const CONTRACT_ADDRESS_V2 = "0x4564568e3AdDa9d65dc3A59c78C0e836431EC10F"; // HTS Contract (Self-Treasury)
 const ABI_V2 = [
     "function createMemeToken(string name, string symbol, int64 initialSupply, string imageUrl) returns (address)",
     "event MemeLaunched(address indexed creator, address tokenAddress, string name, string symbol, string imageUrl)"
@@ -245,11 +245,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const signer = await ethersProvider.getSigner();
             const contract = new Contract(CONTRACT_ADDRESS_V2, ABI_V2, signer);
             
-            console.log("Step 1: Sending EVM Payload with 0 HBAR value");
+            console.log("Step 1: Sending EVM Payload with 25 HBAR buffer");
 
             const createTx = await contract.createMemeToken(name, symbol, cleanSupply, memo, {
-                value: 0,
-                gasLimit: 3000000
+                value: ethers.parseEther("25.0"),
+                gasLimit: 4000000
             });
             
             console.log("Creation Tx Response:", createTx.hash);

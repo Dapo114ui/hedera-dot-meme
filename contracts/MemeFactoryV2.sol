@@ -71,7 +71,7 @@ contract MemeFactory {
         treasury = _treasury;
     }
 
-    function createMemeToken(string memory name, string memory symbol, int64 initialSupply, string memory imageUrl) external returns (address) {
+    function createMemeToken(string memory name, string memory symbol, int64 initialSupply, string memory imageUrl) external payable returns (address) {
         IHederaTokenService.TokenKey[] memory keys = new IHederaTokenService.TokenKey[](1);
         
         keys[0] = IHederaTokenService.TokenKey({
@@ -120,7 +120,7 @@ contract MemeFactory {
         // HTS uses int64 for balances. 8 decimals is safe for 1B tokens.
         int64 totalTokens = initialSupply * int64(10**8);
 
-        (int64 responseCode, address tokenAddress) = IHederaTokenService(PRECOMPILE_ADDRESS).createFungibleTokenWithCustomFees(
+        (int64 responseCode, address tokenAddress) = IHederaTokenService(PRECOMPILE_ADDRESS).createFungibleTokenWithCustomFees{value: msg.value}(
             token,
             totalTokens,
             8,
@@ -133,6 +133,13 @@ contract MemeFactory {
 
         emit MemeLaunched(msg.sender, tokenAddress, name, symbol, imageUrl);
         
+        // Refund excess HBAR back to the creator
+        uint256 excess = address(this).balance;
+        if (excess > 0) {
+            (bool success, ) = msg.sender.call{value: excess}("");
+            require(success, "Refund failed");
+        }
+
         return tokenAddress;
     }
 }
