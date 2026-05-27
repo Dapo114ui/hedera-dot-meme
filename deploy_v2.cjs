@@ -42,7 +42,11 @@ async function main() {
     const factory = new ethers.ContractFactory(abi, bytecode, wallet);
     
     try {
-        const contract = await factory.deploy(TREASURY_ADDRESS);
+        const overrides = {
+            gasLimit: 4000000,
+            gasPrice: await provider.getFeeData().then(d => d.gasPrice || 1000000000)
+        };
+        const contract = await factory.deploy(TREASURY_ADDRESS, overrides);
         await contract.waitForDeployment();
         
         const deployedAddress = await contract.getAddress();
