@@ -1,45 +1,44 @@
-const solc = require('solc');
 const fs = require('fs');
-const path = require('path');
+const solc = require('solc');
 
-const contractPath = path.resolve(__dirname, 'contracts', 'MemeFactoryV2.sol');
-const source = fs.readFileSync(contractPath, 'utf8');
+function compile() {
+    const sourceCode = fs.readFileSync('contracts/MemeFactoryV2.sol', 'utf8');
 
-const input = {
-    language: 'Solidity',
-    sources: {
-        'MemeFactoryV2.sol': {
-            content: source
-        }
-    },
-    settings: {
-        outputSelection: {
-            '*': {
-                '*': ['abi', 'evm.bytecode']
-            }
+    const input = {
+        language: 'Solidity',
+        sources: {
+            'MemeFactoryV2.sol': {
+                content: sourceCode,
+            },
         },
-        optimizer: {
-            enabled: true,
-            runs: 200
-        }
-    }
-};
+        settings: {
+            outputSelection: {
+                '*': {
+                    '*': ['*'],
+                },
+            },
+            evmVersion: "paris"
+        },
+    };
 
-console.log("Compiling MemeFactoryV2.sol...");
-const output = JSON.parse(solc.compile(JSON.stringify(input)));
+    console.log("Compiling MemeFactoryV2.sol...");
+    const output = JSON.parse(solc.compile(JSON.stringify(input)));
 
-if (output.errors) {
-    output.errors.forEach(err => {
-        console.error(err.formattedMessage);
-    });
-    if (output.errors.some(err => err.severity === 'error')) {
-        process.exit(1);
+    if (output.errors) {
+        output.errors.forEach((err) => {
+            console.error(err.formattedMessage);
+        });
+        const hasErrors = output.errors.some(e => e.severity === 'error');
+        if (hasErrors) process.exit(1);
     }
+
+    const contract = output.contracts['MemeFactoryV2.sol']['MemeFactory'];
+    
+    const bytecode = contract.evm.bytecode.object;
+    const abi = contract.abi;
+
+    fs.writeFileSync('MemeFactoryV2_output.json', JSON.stringify({ abi, bytecode }, null, 2));
+    console.log("Compiled successfully to MemeFactoryV2_output.json");
 }
 
-const contract = output.contracts['MemeFactoryV2.sol']['MemeFactory'];
-const abi = contract.abi;
-const bytecode = contract.evm.bytecode.object;
-
-fs.writeFileSync('MemeFactoryV2_output.json', JSON.stringify({ abi, bytecode }, null, 2));
-console.log("Compilation successful! ABI and Bytecode saved to MemeFactoryV2_output.json");
+compile();
