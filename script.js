@@ -192,7 +192,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (isConnected && address) {
                 currentUserEvm = address;
                 currentUserNative = await getHederaNativeId(address);
+                console.log('Parsed ID:', currentUserNative, '| EVM:', address);
             } else {
+                console.log('Wallet disconnected or missing address:', { isConnected, address });
                 currentUserEvm = null;
                 currentUserNative = null;
             }
@@ -201,12 +203,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             currentUserEvm = null;
             currentUserNative = null;
         }
+        
+        console.log("updateWalletUI about to run. State:", {
+            currentUserEvm,
+            currentUserNative,
+            btnFound: !!document.getElementById('custom-wallet-btn')
+        });
         updateWalletUI();
     };
 
     try {
         if (appkit && typeof appkit.subscribeAccount === 'function') {
             appkit.subscribeAccount(syncAppKitState);
+            console.log("Subscribed to appkit account changes.");
         } else {
             console.warn("appkit.subscribeAccount is not available.");
         }
@@ -214,9 +223,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error("Failed to subscribe to AppKit:", e);
     }
     
-    // Initial sync
+    // Initial sync & robust polling fallback
     try {
         setTimeout(syncAppKitState, 500);
+        setInterval(() => {
+            // Only update if we are not connected but AppKit internally says we are, or vice-versa
+            const internalState = appkit && typeof appkit.getAccount === 'function' ? appkit.getAccount().isConnected : false;
+            const uiConnected = currentUserNative !== null;
+            if (internalState !== uiConnected) {
+                console.log("Polling caught a state mismatch, forcing sync!");
+                syncAppKitState();
+            }
+        }, 2000);
     } catch (e) {
         console.error("Initial sync error:", e);
     }
