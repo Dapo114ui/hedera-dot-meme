@@ -277,7 +277,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log("Step 1: Sending EVM Payload with 25 HBAR buffer");
 
             const createTx = await contract.createMemeToken(name, symbol, cleanSupply, memo, {
-                value: ethers.parseEther("25.0"),
+                value: parseEther("25.0"),
                 gasLimit: 4000000
             });
             
