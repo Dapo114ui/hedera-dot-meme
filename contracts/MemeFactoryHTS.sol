@@ -83,7 +83,9 @@ contract MemeFactoryHTS {
             expiry: expiry
         });
 
-        (int64 responseCode, address tokenAddress) = IHederaTokenService(PRECOMPILE_ADDRESS).createFungibleToken(
+        // We send 40 HBAR to the precompile to ensure it has enough for the token creation fee.
+        // Hedera will automatically deduct the exact fee (~10-15 HBAR) and leave the rest in the contract.
+        (int64 responseCode, address tokenAddress) = IHederaTokenService(PRECOMPILE_ADDRESS).createFungibleToken{value: 40 ether}(
             token,
             initialSupply,
             8
