@@ -1,4 +1,5 @@
 import { createAppKit } from '@reown/appkit';
+import { EthersAdapter } from '@reown/appkit-adapter-ethers';
 
 const projectId = import.meta.env.VITE_REOWN_PROJECT_ID || '56b4ff1bce8f0f39d1087b98b8de75fe'; 
 if (!projectId) {
@@ -24,7 +25,10 @@ const hederaTestnet = {
 export let appkit = null;
 
 try {
+  const ethersAdapter = new EthersAdapter();
+  
   appkit = createAppKit({
+    adapters: [ethersAdapter],
     networks: [hederaTestnet],
     defaultNetwork: hederaTestnet,
     metadata,
