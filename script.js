@@ -153,33 +153,56 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const connectWallet = async () => {
         try {
-            await appkit.open();
-            return true;
+            if (!appkit) throw new Error("AppKit failed to initialize on page load");
+            if (typeof appkit.open === 'function') {
+                await appkit.open();
+                return true;
+            } else {
+                throw new Error("appkit.open is not a function");
+            }
         } catch (err) {
             console.error("Connection error:", err);
-            alert("Failed to open wallet modal.");
+            alert("Failed to connect wallet: " + err.message);
         }
         return false;
     };
 
     const syncAppKitState = async () => {
-        const isConnected = appkit.getIsConnectedState ? appkit.getIsConnectedState() : (appkit.getIsConnected ? appkit.getIsConnected() : false);
-        const address = appkit.getAddress();
-        
-        if (isConnected && address) {
-            currentUserEvm = address;
-            currentUserNative = await getHederaNativeId(address);
-        } else {
+        try {
+            const isConnected = appkit.getIsConnectedState ? appkit.getIsConnectedState() : (appkit.getIsConnected ? appkit.getIsConnected() : false);
+            const address = appkit.getAddress ? appkit.getAddress() : null;
+            
+            if (isConnected && address) {
+                currentUserEvm = address;
+                currentUserNative = await getHederaNativeId(address);
+            } else {
+                currentUserEvm = null;
+                currentUserNative = null;
+            }
+        } catch (e) {
+            console.warn("AppKit state sync error:", e);
             currentUserEvm = null;
             currentUserNative = null;
         }
         updateWalletUI();
     };
 
-    appkit.subscribeAccount(syncAppKitState);
+    try {
+        if (appkit && typeof appkit.subscribeAccount === 'function') {
+            appkit.subscribeAccount(syncAppKitState);
+        } else {
+            console.warn("appkit.subscribeAccount is not available.");
+        }
+    } catch (e) {
+        console.error("Failed to subscribe to AppKit:", e);
+    }
     
     // Initial sync
-    setTimeout(syncAppKitState, 500);
+    try {
+        setTimeout(syncAppKitState, 500);
+    } catch (e) {
+        console.error("Initial sync error:", e);
+    }
 
     // Use Event Delegation for Connect/Launch/Copy
     document.addEventListener('click', async (e) => {
