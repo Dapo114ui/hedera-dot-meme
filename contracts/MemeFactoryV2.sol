@@ -57,6 +57,12 @@ interface IHederaTokenService {
         FixedFee[] memory fixedFees,
         FractionalFee[] memory fractionalFees
     ) external payable returns (int64 responseCode, address tokenAddress);
+
+    function createFungibleToken(
+        HederaToken memory token,
+        uint256 initialTotalSupply,
+        uint256 decimals
+    ) external payable returns (int64 responseCode, address tokenAddress);
 }
 
 contract MemeFactory {
@@ -72,26 +78,14 @@ contract MemeFactory {
     }
 
     function createMemeToken(string memory name, string memory symbol, int64 initialSupply, string memory imageUrl) external payable returns (address) {
-        IHederaTokenService.TokenKey[] memory keys = new IHederaTokenService.TokenKey[](1);
-        
-        keys[0] = IHederaTokenService.TokenKey({
-            keyType: 1, // ADMIN
-            key: IHederaTokenService.KeyValue({
-                inheritAccountKey: true,
-                contractId: address(0),
-                ed25519: new bytes(0),
-                ECDSA_secp256k1: new bytes(0),
-                delegatableContractId: address(0)
-            })
-        });
+        IHederaTokenService.TokenKey[] memory keys = new IHederaTokenService.TokenKey[](0);
 
         IHederaTokenService.Expiry memory expiry = IHederaTokenService.Expiry({
             second: 0,
-            autoRenewAccount: msg.sender,
+            autoRenewAccount: address(0),
             autoRenewPeriod: 7776000 // 90 days
         });
 
-        // Set treasury directly to msg.sender to receive 100% of supply
         IHederaTokenService.HederaToken memory token = IHederaTokenService.HederaToken({
             name: name,
             symbol: symbol,
@@ -104,21 +98,16 @@ contract MemeFactory {
             expiry: expiry
         });
 
-        // Removed FractionalFee because setting a feeCollector different from the token treasury 
-        // without their explicit signature causes HTS to revert the transaction.
-        IHederaTokenService.FractionalFee[] memory fractionalFees = new IHederaTokenService.FractionalFee[](0);
+        // HTS allows uint256 for createFungibleToken.
+        uint256 totalTokens = uint256(uint64(initialSupply)) * (10**8);
 
-        IHederaTokenService.FixedFee[] memory fixedFees = new IHederaTokenService.FixedFee[](0);
-
-        // HTS uses int64 for balances. 8 decimals is safe for 1B tokens.
-        int64 totalTokens = initialSupply * int64(10**8);
-
-        (int64 responseCode, address tokenAddress) = IHederaTokenService(PRECOMPILE_ADDRESS).createFungibleTokenWithCustomFees{value: msg.value}(
+        // We use createFungibleToken instead of createFungibleTokenWithCustomFees 
+        // to avoid HTS signature requirements for fee collectors.
+        // The 25 HBAR launch fee is kept in this contract's balance or sent to treasury.
+        (int64 responseCode, address tokenAddress) = IHederaTokenService(PRECOMPILE_ADDRESS).createFungibleToken{value: msg.value}(
             token,
             totalTokens,
-            8,
-            fixedFees,
-            fractionalFees
+            8
         );
 
         emit DebugResponse(responseCode);
