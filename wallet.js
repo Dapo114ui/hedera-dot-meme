@@ -23,6 +23,24 @@ const hederaTestnet = {
   blockExplorers: { default: { name: 'Hashscan', url: 'https://hashscan.io/testnet' } },
 };
 
+// Aggressively clear stale WalletConnect sessions that contain the malformed hedera:testnet CAIP-10 string
+// This prevents AppKit from fatally crashing on page load when it tries to restore a bad session.
+try {
+  for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('wc@2:') || key.startsWith('@w3m') || key.startsWith('@appkit') || key.startsWith('wagmi'))) {
+          const value = localStorage.getItem(key);
+          if (value && value.includes('hedera:testnet')) {
+              console.warn(`Wiping corrupted AppKit cache key: ${key}`);
+              localStorage.removeItem(key);
+              i--; // Adjust index after removal
+          }
+      }
+  }
+} catch (e) {
+  console.error("Failed to clear localStorage:", e);
+}
+
 export let appkit = null;
 
 try {
