@@ -252,8 +252,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         btn.innerHTML = `<span>Preparing Launch...</span>`;
 
         try {
-            const universalProvider = appkit.getWalletProvider();
-            if (!universalProvider) throw new Error("Wallet provider not initialized.");
+            let universalProvider = null;
+            if (appkit && typeof appkit.getProvider === 'function') {
+                universalProvider = appkit.getProvider('eip155') || appkit.getProvider('hedera');
+            }
+            if (!universalProvider) {
+                universalProvider = await getProvider(); // Fallback to our custom EIP-6963 / Window provider
+            }
+            if (!universalProvider) throw new Error("Wallet provider not initialized or not found.");
 
             console.log("CRITICAL: Executing Native Launch via UniversalProvider v5.0", currentUserNative);
             btn.innerHTML = `<span>Approving Meme Launch...</span>`;

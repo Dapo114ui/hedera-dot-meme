@@ -48,7 +48,10 @@ try {
   // Disconnect Cleanup
   setTimeout(() => {
       try {
-          const provider = appkit.getWalletProvider ? appkit.getWalletProvider() : null;
+          let provider = null;
+          if (appkit && typeof appkit.getProvider === 'function') {
+              provider = appkit.getProvider('eip155') || appkit.getProvider('hedera');
+          }
           if (provider && provider.session && provider.session.namespaces && provider.session.namespaces['eip155']) {
               console.warn("Stale eip155 session detected! Forcing disconnect.");
               if (appkit.disconnect) appkit.disconnect();
