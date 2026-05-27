@@ -77,6 +77,10 @@ contract MemeFactory {
         treasury = _treasury;
     }
 
+    // REQUIRED for HTS Precompile to refund excess HBAR
+    receive() external payable {}
+    fallback() external payable {}
+
     function createMemeToken(string memory name, string memory symbol, int64 initialSupply, string memory imageUrl) external payable returns (address) {
         IHederaTokenService.TokenKey[] memory keys = new IHederaTokenService.TokenKey[](0);
 
