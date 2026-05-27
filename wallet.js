@@ -13,13 +13,14 @@ const metadata = {
   icons: ['https://avatars.githubusercontent.com/u/37784886'] 
 };
 
-// Define Hedera Testnet manually to enforce hedera namespace instead of eip155
+// Define Hedera Testnet manually using standard EVM chain ID (296) to prevent eip155 string concatenation crashes
 const hederaTestnet = {
-  id: 'hedera:testnet',
+  id: 296,
   name: 'Hedera Testnet',
-  network: 'hedera:testnet',
-  nativeCurrency: { name: 'HBAR', symbol: 'HBAR', decimals: 8 },
+  network: 'hedera-testnet',
+  nativeCurrency: { name: 'HBAR', symbol: 'HBAR', decimals: 18 },
   rpcUrls: { default: { http: ['https://testnet.hashio.io/api'] } },
+  blockExplorers: { default: { name: 'Hashscan', url: 'https://hashscan.io/testnet' } },
 };
 
 export let appkit = null;
