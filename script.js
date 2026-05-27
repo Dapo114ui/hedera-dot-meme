@@ -40,6 +40,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Helper Functions
     async function getHederaNativeId(evmAddress) {
         if (!evmAddress) return null;
+        if (/^0\.0\.\d+$/.test(evmAddress)) return evmAddress;
+        
         // 1. Handle Long-Zero Address automatically
         if (evmAddress.toLowerCase().startsWith('0x000000000000000000000000')) {
             const hexNum = evmAddress.substring(26);
@@ -169,8 +171,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const syncAppKitState = async () => {
         try {
-            const isConnected = appkit.getIsConnectedState ? appkit.getIsConnectedState() : (appkit.getIsConnected ? appkit.getIsConnected() : false);
-            const address = appkit.getAddress ? appkit.getAddress() : null;
+            let isConnected = false;
+            let address = null;
+
+            if (appkit && typeof appkit.getAccount === 'function') {
+                const account = appkit.getAccount();
+                isConnected = account.isConnected;
+                address = account.address;
+            } else {
+                isConnected = appkit.getIsConnectedState ? appkit.getIsConnectedState() : (appkit.getIsConnected ? appkit.getIsConnected() : false);
+                address = appkit.getAddress ? appkit.getAddress() : null;
+            }
+
+            if (address && address.includes(':')) {
+                // Parse CAIP-10 string (e.g. hedera:testnet:0.0.1234)
+                const parts = address.split(':');
+                address = parts[parts.length - 1];
+            }
             
             if (isConnected && address) {
                 currentUserEvm = address;
