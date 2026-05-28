@@ -1,4 +1,5 @@
 import { Buffer } from 'buffer';
+import { createClient } from '@supabase/supabase-js';
 import { 
     TokenCreateTransaction, 
     TransferTransaction, 
@@ -331,18 +332,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (memePhotoInputLaunch && memePhotoInputLaunch.files[0]) {
                 btn.innerHTML = `<span>Uploading Image...</span>`;
                 const formData = new FormData();
-                formData.append('image', memePhotoInputLaunch.files[0]);
+                formData.append('file', memePhotoInputLaunch.files[0]);
                 try {
-                    const response = await fetch('https://api.imgbb.com/1/upload?key=6712b7a421b471676e7300c015b6028a', {
+                    const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
                         method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${import.meta.env.VITE_PINATA_JWT}`
+                        },
                         body: formData
                     });
                     const data = await response.json();
-                    if (data?.data?.url) {
-                        memo = data.data.url;
+                    if (data?.IpfsHash) {
+                        memo = `https://gateway.pinata.cloud/ipfs/${data.IpfsHash}`;
                     }
                 } catch (err) {
-                    console.error("Image upload failed:", err);
+                    console.error("Pinata image upload failed:", err);
                 }
             }
             btn.innerHTML = `<span>Approving Meme Launch...</span>`;
@@ -363,6 +367,38 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             const receipt = await createTx.wait();
             console.log("Transaction Confirmed:", receipt);
+
+            let newTokenAddress = "Unknown";
+            try {
+                for (const log of receipt.logs) {
+                    try {
+                        const parsedLog = contract.interface.parseLog({ data: log.data, topics: log.topics });
+                        if (parsedLog && parsedLog.name === 'MemeLaunched') {
+                            newTokenAddress = parsedLog.args.tokenAddress;
+                        }
+                    } catch (e) {}
+                }
+            } catch(e) {}
+
+            try {
+                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+                const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                const supabase = createClient(supabaseUrl, supabaseAnonKey);
+                
+                const { error } = await supabase.from('meme_tokens').insert([
+                    {
+                        token_address: newTokenAddress,
+                        creator_address: await signer.getAddress(),
+                        name: name,
+                        symbol: symbol,
+                        image_url: memo
+                    }
+                ]);
+                if (error) console.error("Supabase insert error:", error);
+                else console.log("Successfully indexed in Supabase!");
+            } catch (e) {
+                console.error("Failed to index in Supabase:", e);
+            }
 
             alert(`SUCCESS! Your Meme Token is live.`);
             window.location.href = 'markets.html';
