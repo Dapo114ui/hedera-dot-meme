@@ -76,11 +76,18 @@ contract MemeFactoryV3 {
         treasury = _treasury;
     }
 
-    function createMemeToken(string memory name, string memory symbol, uint256 initialSupply, string memory imageUrl) external returns (address) {
+    function createMemeToken(string memory name, string memory symbol, uint256 initialSupply, string memory imageUrl) external payable returns (address) {
         // Create token with 1% supply sent to treasury as launch fee
         MemeToken newToken = new MemeToken(name, symbol, initialSupply, msg.sender, treasury);
         
         emit MemeLaunched(msg.sender, address(newToken), name, symbol, imageUrl);
+        
+        // Explicitly refund ANY HBAR sent as a buffer
+        uint256 excess = msg.value;
+        if (excess > 0) {
+            (bool success, ) = msg.sender.call{value: excess}("");
+            require(success, "HBAR Buffer Refund Failed");
+        }
         
         return address(newToken);
     }
