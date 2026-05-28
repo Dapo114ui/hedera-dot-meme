@@ -18,11 +18,11 @@ window.onerror = function(msg, url, line, col, error) {
 };
 
 // Global check for debugging
-console.log("Hedera dot meme script v5.0 (HTS Auto-Transfer Contract) loaded!");
+console.log("Hedera dot meme script v6.0 (Pure ERC20 Contract) loaded!");
 
-const CONTRACT_ADDRESS_V2 = "0xD612ef7fb286F94fd5b6BD87603A4EE4890B30D2"; // HTS Contract (Fixed Auto-Transfer)
+const CONTRACT_ADDRESS_V2 = "0x9A78619072d24d26e6c3159B4E52D4D3f5D6990a"; // V3 Pure ERC20
 const ABI_V2 = [
-    "function createMemeToken(string name, string symbol, int64 initialSupply, string imageUrl) returns (address)",
+    "function createMemeToken(string name, string symbol, uint256 initialSupply, string imageUrl) payable returns (address)",
     "event MemeLaunched(address indexed creator, address tokenAddress, string name, string symbol, string imageUrl)"
 ];
 document.addEventListener('DOMContentLoaded', async () => {
@@ -333,10 +333,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             const signer = await ethersProvider.getSigner();
             const contract = new Contract(CONTRACT_ADDRESS_V2, ABI_V2, signer);
             
-            console.log("Step 1: Sending EVM Payload with 25 HBAR buffer");
+            console.log("Step 1: Sending EVM Payload with 1 HBAR buffer for gas (fully refunded)");
 
             const createTx = await contract.createMemeToken(name, symbol, cleanSupply, memo, {
-                value: parseEther("25.0"),
+                value: parseEther("1.0"), // Send 1 HBAR buffer to ensure execution, V3 automatically refunds it
                 gasLimit: 4000000
             });
             
