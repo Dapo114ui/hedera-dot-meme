@@ -344,7 +344,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                     const data = await response.json();
                     if (!response.ok) {
-                        alert("Pinata API Error: " + (data.error || response.statusText));
+                        alert("Pinata API Error: " + JSON.stringify(data.error || data, null, 2));
                     } else if (data?.IpfsHash) {
                         memo = `https://gateway.pinata.cloud/ipfs/${data.IpfsHash}`;
                     } else {
