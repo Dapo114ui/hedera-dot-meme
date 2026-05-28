@@ -12,6 +12,8 @@ import {
 import { Interface, parseUnits, BrowserProvider, Contract, parseEther } from 'ethers';
 import { appkit } from './wallet.js';
 
+let selectedMemeFile = null;
+
 // Global Error Handler for Debugging
 window.onerror = function(msg, url, line, col, error) {
     alert(`GLOBAL ERROR: ${msg}\nAt: ${url}:${line}:${col}`);
@@ -328,11 +330,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             const cleanSupply = parseInt(supplyInput.replace(/,/g, '')) || 0;
             
             let memo = `ipfs://bafybeidmeme${Math.random().toString(36).substring(7)}`;
-            const memePhotoInputLaunch = document.getElementById('memePhoto');
-            if (memePhotoInputLaunch && memePhotoInputLaunch.files[0]) {
+            if (selectedMemeFile) {
                 btn.innerHTML = `<span>Uploading Image...</span>`;
                 const formData = new FormData();
-                formData.append('file', memePhotoInputLaunch.files[0]);
+                formData.append('file', selectedMemeFile);
                 try {
                     const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
                         method: 'POST',
@@ -342,11 +343,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                         body: formData
                     });
                     const data = await response.json();
-                    if (data?.IpfsHash) {
+                    if (!response.ok) {
+                        alert("Pinata API Error: " + (data.error || response.statusText));
+                    } else if (data?.IpfsHash) {
                         memo = `https://gateway.pinata.cloud/ipfs/${data.IpfsHash}`;
+                    } else {
+                        alert("Pinata upload failed silently (no hash).");
                     }
                 } catch (err) {
                     console.error("Pinata image upload failed:", err);
+                    alert("Pinata Network Error: " + err.message);
                 }
             }
             btn.innerHTML = `<span>Approving Meme Launch...</span>`;
@@ -422,6 +428,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         memePhotoInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) {
+                selectedMemeFile = file;
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     photoPreview.src = event.target.result;
@@ -450,7 +457,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             photoUploadArea.style.borderColor = 'rgba(255, 215, 0, 0.3)';
             const file = e.dataTransfer.files[0];
             if (file && file.type.startsWith('image/')) {
-                memePhotoInput.files = e.dataTransfer.files;
+                selectedMemeFile = file;
+                try {
+                    memePhotoInput.files = e.dataTransfer.files;
+                } catch(e) {} // Some browsers block this
                 const reader = new FileReader();
                 reader.onload = (event) => {
                     photoPreview.src = event.target.result;
