@@ -321,13 +321,31 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!universalProvider) throw new Error("Wallet provider not initialized or not found.");
 
             console.log("CRITICAL: Executing Native Launch via UniversalProvider v5.0", currentUserNative);
-            btn.innerHTML = `<span>Approving Meme Launch...</span>`;
-
             const name = document.getElementById('tokenName')?.value || "My Meme";
             const symbol = document.getElementById('ticker')?.value || "MEME";
             const supplyInput = document.getElementById('initialSupply')?.value || "1000000000";
             const cleanSupply = parseInt(supplyInput.replace(/,/g, '')) || 0;
-            const memo = `ipfs://bafybeidmeme${Math.random().toString(36).substring(7)}`;
+            
+            let memo = `ipfs://bafybeidmeme${Math.random().toString(36).substring(7)}`;
+            const memePhotoInputLaunch = document.getElementById('memePhoto');
+            if (memePhotoInputLaunch && memePhotoInputLaunch.files[0]) {
+                btn.innerHTML = `<span>Uploading Image...</span>`;
+                const formData = new FormData();
+                formData.append('image', memePhotoInputLaunch.files[0]);
+                try {
+                    const response = await fetch('https://api.imgbb.com/1/upload?key=6712b7a421b471676e7300c015b6028a', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const data = await response.json();
+                    if (data?.data?.url) {
+                        memo = data.data.url;
+                    }
+                } catch (err) {
+                    console.error("Image upload failed:", err);
+                }
+            }
+            btn.innerHTML = `<span>Approving Meme Launch...</span>`;
 
             const ethersProvider = new BrowserProvider(universalProvider);
             const signer = await ethersProvider.getSigner();
