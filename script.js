@@ -18,11 +18,11 @@ window.onerror = function(msg, url, line, col, error) {
 };
 
 // Global check for debugging
-console.log("Hedera dot meme script v6.0 (Pure ERC20 V3 Contract) loaded!");
+console.log("Hedera dot meme script v5.0 (HTS Auto-Transfer Contract) loaded!");
 
-const CONTRACT_ADDRESS_V3 = "0xE965fae41D031e8f3DE91123aAaeE41989cAa1A3"; // Pure ERC20 Contract
-const ABI_V3 = [
-    "function createMemeToken(string name, string symbol, uint256 initialSupply, string imageUrl) returns (address)",
+const CONTRACT_ADDRESS_V2 = "0xD612ef7fb286F94fd5b6BD87603A4EE4890B30D2"; // HTS Contract (Fixed Auto-Transfer)
+const ABI_V2 = [
+    "function createMemeToken(string name, string symbol, int64 initialSupply, string imageUrl) returns (address)",
     "event MemeLaunched(address indexed creator, address tokenAddress, string name, string symbol, string imageUrl)"
 ];
 document.addEventListener('DOMContentLoaded', async () => {
@@ -329,11 +329,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const cleanSupply = parseInt(supplyInput.replace(/,/g, '')) || 0;
             const memo = `ipfs://bafybeidmeme${Math.random().toString(36).substring(7)}`;
 
-            // Initialize Ethers provider and contract
-            const provider = appkit.getProvider('eip155');
-            const ethersProvider = new ethers.BrowserProvider(provider);
+            const ethersProvider = new BrowserProvider(universalProvider);
             const signer = await ethersProvider.getSigner();
-            const contract = new ethers.Contract(CONTRACT_ADDRESS_V3, ABI_V3, signer);
+            const contract = new Contract(CONTRACT_ADDRESS_V2, ABI_V2, signer);
             
             console.log("Step 1: Sending EVM Payload with 25 HBAR buffer");
 
@@ -482,11 +480,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function loadPortfolio(userAddress) {
         try {
             console.log("Fetching your memes...", userAddress);
-            const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/${CONTRACT_ADDRESS_V3}/results/logs?order=desc`);
+            const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/${CONTRACT_ADDRESS_V2}/results/logs?order=desc`);
             if (!response.ok) throw new Error("Failed to fetch logs");
 
             const data = await response.json();
-            const iface = new Interface(ABI_V3);
+            const iface = new Interface(ABI_V2);
 
             portfolioGrid.innerHTML = '';
             let count = 0;
@@ -598,11 +596,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function loadMarkets() {
         try {
             console.log("Fetching launched memes...");
-            const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/${CONTRACT_ADDRESS_V3}/results/logs?order=desc`);
+            const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/${CONTRACT_ADDRESS_V2}/results/logs?order=desc`);
             if (!response.ok) throw new Error("Failed to fetch logs");
 
             const data = await response.json();
-            const iface = new Interface(ABI_V3);
+            const iface = new Interface(ABI_V2);
 
             // Clear existing placeholders
             tokensGrid.innerHTML = '';
@@ -668,11 +666,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function loadLeaderboard() {
         try {
-            const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/${CONTRACT_ADDRESS_V3}/results/logs?order=desc`);
+            const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/${CONTRACT_ADDRESS_V2}/results/logs?order=desc`);
             if (!response.ok) throw new Error("Failed to fetch logs");
 
             const data = await response.json();
-            const iface = new Interface(ABI_V3);
+            const iface = new Interface(ABI_V2);
 
             const creators = {}; // { address: count }
             const memes = [];    // [ { name, symbol, address, imageUrl } ]
