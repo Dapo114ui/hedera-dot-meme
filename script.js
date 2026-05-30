@@ -401,13 +401,30 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 ]);
                 if (error) console.error("Supabase insert error:", error);
-                else console.log("Successfully indexed in Supabase!");
+                else {
+                    console.log("Successfully indexed in Supabase!");
+                    const successModal = document.getElementById('successModal');
+                    const viewMarketBtn = document.getElementById('viewMarketBtn');
+                    const closeModalBtn = document.getElementById('closeModalBtn');
+
+                    successModal.classList.add('active');
+
+                    viewMarketBtn.onclick = () => { window.location.href = 'markets.html'; };
+                    closeModalBtn.onclick = () => {
+                        successModal.classList.remove('active');
+                        document.querySelector('.launch-form').reset();
+                        document.getElementById('photo-preview').style.display = 'none';
+                        document.getElementById('upload-placeholder').style.display = 'block';
+                        btn.innerHTML = `<span>Launch Meme</span>`;
+                        btn.disabled = false;
+                    };
+                }
             } catch (e) {
                 console.error("Failed to index in Supabase:", e);
+                // Fallback if supabase fails but token is created
+                alert(`SUCCESS! Your Meme Token is live.`);
+                window.location.href = 'markets.html';
             }
-
-            alert(`SUCCESS! Your Meme Token is live.`);
-            window.location.href = 'markets.html';
 
         } catch (err) {
             console.error("Native Launch Error:", err);
