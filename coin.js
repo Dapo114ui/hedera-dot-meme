@@ -17,17 +17,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
     try {
-        // 2. Fetch Data from Supabase
+        // 2. Fetch Data from Supabase (case-insensitive match)
         const { data, error } = await supabase
             .from('meme_tokens')
             .select('*')
-            .eq('token_address', tokenAddress)
+            .ilike('token_address', tokenAddress)
             .single();
 
         if (error || !data) {
             console.error("Token not found", error);
-            alert("Token not found!");
-            window.location.href = 'markets.html';
+            document.getElementById('coin-loader').innerHTML = `
+                <div style="text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+                    <h2 style="margin-bottom: 8px;">Token Not Found</h2>
+                    <p style="color: var(--text-secondary); margin-bottom: 24px;">The token address you are looking for does not exist or has not been indexed yet.</p>
+                    <a href="markets.html" class="trade-submit-btn" style="text-decoration: none; display: inline-block; width: auto; padding: 10px 24px;">Back to Markets</a>
+                </div>
+            `;
             return;
         }
 
@@ -65,8 +71,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     } catch (err) {
         console.error(err);
-        alert("Failed to load token data");
-        window.location.href = 'markets.html';
+        document.getElementById('coin-loader').innerHTML = `
+            <div style="text-align: center;">
+                <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
+                <h2 style="margin-bottom: 8px;">Connection Error</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 24px;">Failed to load token data from the indexing service.</p>
+                <a href="markets.html" class="trade-submit-btn" style="text-decoration: none; display: inline-block; width: auto; padding: 10px 24px;">Back to Markets</a>
+            </div>
+        `;
     }
 });
 
