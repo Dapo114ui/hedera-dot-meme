@@ -23,7 +23,8 @@ export default defineConfig({
         markets: resolve(__dirname, 'markets.html'),
         launch: resolve(__dirname, 'launch.html'),
         leaderboard: resolve(__dirname, 'leaderboard.html'),
-        portfolio: resolve(__dirname, 'portfolio.html')
+        portfolio: resolve(__dirname, 'portfolio.html'),
+        coin: resolve(__dirname, 'coin.html')
       }
     }
   }
