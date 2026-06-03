@@ -11,12 +11,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
-    // Initialize Supabase
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
     try {
+        // Initialize Supabase
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        
+        if (!supabaseUrl || !supabaseAnonKey) {
+            throw new Error("Supabase Environment Variables are missing! Ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in Vercel.");
+        }
+        
+        const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
         // 2. Fetch Data from Supabase (case-insensitive match)
         const { data, error } = await supabase
             .from('meme_tokens')
