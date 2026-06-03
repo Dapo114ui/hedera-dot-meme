@@ -632,9 +632,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                                         <span class="stat-value">1% Paid</span>
                                     </div>
                                 </div>
-                                <div style="margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                                    <a href="https://hashscan.io/testnet/token/${tokenAddress}" target="_blank" class="filter-btn" style="text-align: center; text-decoration: none; padding: 10px; font-size: 0.8rem;">HashScan</a>
-                                    <button class="filter-btn" style="padding: 10px; font-size: 0.8rem;" onclick="alert('Trading coming soon!')">Trade</button>
+                                <div style="margin-top: 20px; display: grid; grid-template-columns: 1fr; gap: 10px;">
+                                    <a href="coin.html?address=${tokenAddress}" class="filter-btn" style="text-align: center; text-decoration: none; padding: 10px; font-size: 0.8rem;">Trade</a>
                                 </div>
                             `;
 
@@ -713,8 +712,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const { tokenAddress, name, symbol, imageUrl } = parsedLog.args;
 
                         const tokenCard = document.createElement('a');
-                        tokenCard.href = `https://hashscan.io/testnet/token/${tokenAddress}`;
-                        tokenCard.target = "_blank";
+                        tokenCard.href = `coin.html?address=${tokenAddress}`;
                         tokenCard.className = 'token-card';
 
                         // Use stored image or default
