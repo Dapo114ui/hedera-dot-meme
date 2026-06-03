@@ -633,7 +633,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                     </div>
                                 </div>
                                 <div style="margin-top: 20px; display: grid; grid-template-columns: 1fr; gap: 10px;">
-                                    <a href="coin.html?address=${tokenAddress}" class="filter-btn" style="text-align: center; text-decoration: none; padding: 10px; font-size: 0.8rem;">Trade</a>
+                                    <a href="/coin?address=${tokenAddress}" class="filter-btn" style="text-align: center; text-decoration: none; padding: 10px; font-size: 0.8rem;">Trade</a>
                                 </div>
                             `;
 
@@ -712,7 +712,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const { tokenAddress, name, symbol, imageUrl } = parsedLog.args;
 
                         const tokenCard = document.createElement('a');
-                        tokenCard.href = `coin.html?address=${tokenAddress}`;
+                        tokenCard.href = `/coin?address=${tokenAddress}`;
                         tokenCard.className = 'token-card';
 
                         // Use stored image or default

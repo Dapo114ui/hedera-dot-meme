@@ -1,6 +1,3 @@
 {
-  "name": "hederadotmeme",
-  "version": 2,
-  "cleanUrls": true,
-  "framework": "vite"
+  "cleanUrls": true
 }
