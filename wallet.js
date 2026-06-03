@@ -64,22 +64,6 @@ try {
     enableEIP6963: true 
   });
 
-  // Disconnect Cleanup
-  setTimeout(() => {
-      try {
-          let provider = null;
-          if (appkit && typeof appkit.getProvider === 'function') {
-              provider = appkit.getProvider('eip155') || appkit.getProvider('hedera');
-          }
-          if (provider && provider.session && provider.session.namespaces && provider.session.namespaces['eip155']) {
-              console.warn("Stale eip155 session detected! Forcing disconnect.");
-              if (appkit.disconnect) appkit.disconnect();
-          }
-      } catch (e) {
-          console.warn("Cleanup routine skipped:", e);
-      }
-  }, 1000);
-
 } catch (err) {
   console.error("FATAL: Failed to initialize Reown AppKit:", err);
 }
