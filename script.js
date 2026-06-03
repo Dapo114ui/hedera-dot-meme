@@ -250,18 +250,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error("Failed to subscribe to AppKit:", e);
     }
     
-    // Initial sync & robust polling fallback
+    // Initial sync
     try {
         setTimeout(syncAppKitState, 500);
-        setInterval(() => {
-            // Only update if we are not connected but AppKit internally says we are, or vice-versa
-            const internalState = appkit && typeof appkit.getAccount === 'function' ? appkit.getAccount().isConnected : false;
-            const uiConnected = currentUserNative !== null;
-            if (internalState !== uiConnected) {
-                console.log("Polling caught a state mismatch, forcing sync!");
-                syncAppKitState();
-            }
-        }, 2000);
     } catch (e) {
         console.error("Initial sync error:", e);
     }
