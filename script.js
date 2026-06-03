@@ -403,21 +403,32 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (error) console.error("Supabase insert error:", error);
                 else {
                     console.log("Successfully indexed in Supabase!");
+                    // 1. Dynamically grab the elements only when needed
                     const successModal = document.getElementById('successModal');
                     const viewMarketBtn = document.getElementById('viewMarketBtn');
                     const closeModalBtn = document.getElementById('closeModalBtn');
+                    // Safely find the form, even if the ID is different
+                    const formToReset = document.getElementById('launchForm') || document.querySelector('.launch-form');
 
-                    successModal.classList.add('active');
+                    // 2. Ensure the modal actually exists in the DOM before manipulating it
+                    if (successModal) {
+                        successModal.classList.add('active');
 
-                    viewMarketBtn.onclick = () => { window.location.href = 'markets.html'; };
-                    closeModalBtn.onclick = () => {
-                        successModal.classList.remove('active');
-                        document.querySelector('.launch-form').reset();
-                        document.getElementById('photo-preview').style.display = 'none';
-                        document.getElementById('upload-placeholder').style.display = 'block';
-                        btn.innerHTML = `<span>Launch Meme</span>`;
-                        btn.disabled = false;
-                    };
+                        viewMarketBtn.onclick = () => { window.location.href = 'markets.html'; };
+                        
+                        closeModalBtn.onclick = () => {
+                            successModal.classList.remove('active');
+                            if (formToReset) {
+                                formToReset.reset(); // Safely clear the inputs
+                            }
+                            document.getElementById('photo-preview').style.display = 'none';
+                            document.getElementById('upload-placeholder').style.display = 'block';
+                            btn.innerHTML = `<span>Launch Meme</span>`;
+                            btn.disabled = false;
+                        };
+                    } else {
+                        console.error("Success modal HTML is missing from the page!");
+                    }
                 }
             } catch (e) {
                 console.error("Failed to index in Supabase:", e);
