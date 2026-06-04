@@ -376,6 +376,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             } catch(e) {}
 
+            if (selectedMemeFile && newTokenAddress !== "Unknown") {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        localStorage.setItem(`meme_image_${newTokenAddress.toLowerCase()}`, e.target.result);
+                    } catch(err) { console.warn("localStorage full"); }
+                };
+                reader.readAsDataURL(selectedMemeFile);
+            }
+
             try {
                 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
                 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -593,7 +603,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                             tokenCard.className = 'token-card';
                             tokenCard.style.position = 'relative';
 
-                            const displayImage = imageUrl && imageUrl.startsWith('http') ? imageUrl : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
+                            let displayImage = imageUrl && imageUrl.startsWith('http') ? imageUrl : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
+                            const localImage = localStorage.getItem(`meme_image_${tokenAddress.toLowerCase()}`);
+                            if (localImage) {
+                                displayImage = localImage;
+                            } else if (imageUrl && imageUrl.startsWith('ipfs://')) {
+                                displayImage = imageUrl.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
+                            }
 
                             tokenCard.innerHTML = `
                                 <!-- Delete Button -->
@@ -705,8 +721,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                         tokenCard.href = `/coin?address=${tokenAddress}`;
                         tokenCard.className = 'token-card';
 
-                        // Use stored image or default
-                        const displayImage = imageUrl && imageUrl.startsWith('http') ? imageUrl : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
+                        // Use stored image or default, checking local cache first
+                        let displayImage = imageUrl && imageUrl.startsWith('http') ? imageUrl : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
+                        const localImage = localStorage.getItem(`meme_image_${tokenAddress.toLowerCase()}`);
+                        if (localImage) {
+                            displayImage = localImage;
+                        } else if (imageUrl && imageUrl.startsWith('ipfs://')) {
+                            displayImage = imageUrl.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
+                        }
 
                         // Fix: Check if symbol already has $
                         const cleanSymbol = symbol.startsWith('$') ? symbol : `$${symbol}`;
@@ -815,7 +837,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             topMemesList.innerHTML = '';
             sortedMemes.forEach((meme, i) => {
-                const displayImage = meme.imageUrl && meme.imageUrl.startsWith('http') ? meme.imageUrl : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
+                let displayImage = meme.imageUrl && meme.imageUrl.startsWith('http') ? meme.imageUrl : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
+                const localImage = localStorage.getItem(`meme_image_${meme.address.toLowerCase()}`);
+                if (localImage) {
+                    displayImage = localImage;
+                } else if (meme.imageUrl && meme.imageUrl.startsWith('ipfs://')) {
+                    displayImage = meme.imageUrl.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
+                }
 
                 const item = document.createElement('div');
                 item.className = `list-item ${i === 0 ? 'highlight-green' : ''}`;
