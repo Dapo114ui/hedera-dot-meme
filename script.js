@@ -379,9 +379,27 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (selectedMemeFile && newTokenAddress !== "Unknown") {
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    try {
-                        localStorage.setItem(`meme_image_${newTokenAddress.toLowerCase()}`, e.target.result);
-                    } catch(err) { console.warn("localStorage full"); }
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_SIZE = 300;
+                        let width = img.width;
+                        let height = img.height;
+                        if (width > height) {
+                            if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
+                        } else {
+                            if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
+                        }
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                        try {
+                            localStorage.setItem(`meme_image_${newTokenAddress.toLowerCase()}`, dataUrl);
+                        } catch(err) { console.warn("localStorage full"); }
+                    };
+                    img.src = e.target.result;
                 };
                 reader.readAsDataURL(selectedMemeFile);
             }
@@ -607,7 +625,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             const localImage = localStorage.getItem(`meme_image_${tokenAddress.toLowerCase()}`);
                             if (localImage) {
                                 displayImage = localImage;
-                            } else if (imageUrl && imageUrl.startsWith('ipfs://')) {
+                            } else if (imageUrl && imageUrl.startsWith('ipfs://') && !imageUrl.includes('bafybeidmeme')) {
                                 displayImage = imageUrl.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
                             }
 
@@ -726,7 +744,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const localImage = localStorage.getItem(`meme_image_${tokenAddress.toLowerCase()}`);
                         if (localImage) {
                             displayImage = localImage;
-                        } else if (imageUrl && imageUrl.startsWith('ipfs://')) {
+                        } else if (imageUrl && imageUrl.startsWith('ipfs://') && !imageUrl.includes('bafybeidmeme')) {
                             displayImage = imageUrl.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
                         }
 
@@ -841,7 +859,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const localImage = localStorage.getItem(`meme_image_${meme.address.toLowerCase()}`);
                 if (localImage) {
                     displayImage = localImage;
-                } else if (meme.imageUrl && meme.imageUrl.startsWith('ipfs://')) {
+                } else if (meme.imageUrl && meme.imageUrl.startsWith('ipfs://') && !meme.imageUrl.includes('bafybeidmeme')) {
                     displayImage = meme.imageUrl.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
                 }
 
