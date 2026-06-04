@@ -237,7 +237,7 @@ function setupTradeInterface(tokenAddress) {
         tabSell.classList.remove('active');
         tradeSubmitBtn.textContent = 'Buy Token';
         tradeSubmitBtn.style.background = '#10b981';
-        document.getElementById('trade-balance').textContent = '1000 HBAR';
+        document.getElementById('trade-balance').textContent = window.currentHbarBalance ? `${window.currentHbarBalance} HBAR` : '0 HBAR';
     };
 
     tabSell.onclick = () => {

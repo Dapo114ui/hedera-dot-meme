@@ -100,9 +100,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const data = await response.json();
                     if (data.balances && data.balances.length > 0) {
                         const hbarBalance = (data.balances[0].balance / 100000000).toFixed(2);
+                        window.currentHbarBalance = hbarBalance;
+                        
                         const balanceDisplay = document.getElementById('wallet-balance-display');
                         if (balanceDisplay) {
                             balanceDisplay.innerText = `${hbarBalance} ℏ |`;
+                        }
+                        
+                        // Dynamically update trade panel balance if on coin page
+                        const tradeBalance = document.getElementById('trade-balance');
+                        if (tradeBalance && tradeBalance.textContent.includes('HBAR')) {
+                            tradeBalance.textContent = `${hbarBalance} HBAR`;
                         }
                     }
                 }
