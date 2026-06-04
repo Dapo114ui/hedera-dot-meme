@@ -335,15 +335,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                     const data = await response.json();
                     if (!response.ok) {
-                        alert("Pinata API Error: " + JSON.stringify(data.error || data, null, 2));
+                        console.warn("Pinata API Error (Falling back to default image):", data.error || data);
                     } else if (data?.IpfsHash) {
                         memo = `https://gateway.pinata.cloud/ipfs/${data.IpfsHash}`;
                     } else {
-                        alert("Pinata upload failed silently (no hash).");
+                        console.warn("Pinata upload failed silently (no hash). Falling back to default.");
                     }
                 } catch (err) {
                     console.error("Pinata image upload failed:", err);
-                    alert("Pinata Network Error: " + err.message);
                 }
             }
             btn.innerHTML = `<span>Approving Meme Launch...</span>`;
