@@ -384,32 +384,49 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             } catch(e) {}
 
+            let finalDbImageUrl = memo;
+
             if (selectedMemeFile && newTokenAddress !== "Unknown") {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        const MAX_SIZE = 300;
-                        let width = img.width;
-                        let height = img.height;
-                        if (width > height) {
-                            if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
-                        } else {
-                            if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
-                        }
-                        canvas.width = width;
-                        canvas.height = height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, width, height);
-                        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-                        try {
-                            localStorage.setItem(`meme_image_${newTokenAddress.toLowerCase()}`, dataUrl);
-                        } catch(err) { console.warn("localStorage full"); }
-                    };
-                    img.src = e.target.result;
-                };
-                reader.readAsDataURL(selectedMemeFile);
+                try {
+                    const dataUrl = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            const img = new Image();
+                            img.onload = () => {
+                                const canvas = document.createElement('canvas');
+                                const MAX_SIZE = 300;
+                                let width = img.width;
+                                let height = img.height;
+                                if (width > height) {
+                                    if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
+                                } else {
+                                    if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
+                                }
+                                canvas.width = width;
+                                canvas.height = height;
+                                const ctx = canvas.getContext('2d');
+                                ctx.drawImage(img, 0, 0, width, height);
+                                resolve(canvas.toDataURL('image/jpeg', 0.8));
+                            };
+                            img.onerror = reject;
+                            img.src = e.target.result;
+                        };
+                        reader.onerror = reject;
+                        reader.readAsDataURL(selectedMemeFile);
+                    });
+                    
+                    try {
+                        localStorage.setItem(`meme_image_${newTokenAddress.toLowerCase()}`, dataUrl);
+                    } catch(err) { console.warn("localStorage full"); }
+                    
+                    // If the memo is our fake IPFS hash (because Pinata failed), 
+                    // use the Base64 image directly for Supabase so other users can see it!
+                    if (memo.includes('bafybeidmeme') || memo.startsWith('ipfs://')) {
+                        finalDbImageUrl = dataUrl;
+                    }
+                } catch(e) {
+                    console.error("Image processing error:", e);
+                }
             }
 
             try {
@@ -423,7 +440,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         creator_address: await signer.getAddress(),
                         name: name,
                         symbol: symbol,
-                        image_url: memo
+                        image_url: finalDbImageUrl
                     }
                 ]);
                 if (error) console.error("Supabase insert error:", error);
@@ -733,6 +750,24 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
 
+            // Fetch images from Supabase to augment the logs
+            let supabaseImageMap = {};
+            try {
+                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+                const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                const supabase = createClient(supabaseUrl, supabaseAnonKey);
+                const { data: memetokens } = await supabase.from('meme_tokens').select('token_address, image_url');
+                if (memetokens) {
+                    memetokens.forEach(item => {
+                        if (item.image_url) {
+                            supabaseImageMap[item.token_address.toLowerCase()] = item.image_url;
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn("Failed to augment with Supabase images", err);
+            }
+
             data.logs.forEach(log => {
                 try {
                     const parsedLog = iface.parseLog({
@@ -750,10 +785,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                         // Use stored image or default, checking local cache first
                         let displayImage = imageUrl && imageUrl.startsWith('http') ? imageUrl : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
                         const localImage = localStorage.getItem(`meme_image_${tokenAddress.toLowerCase()}`);
+                        const dbImage = supabaseImageMap[tokenAddress.toLowerCase()];
+
                         if (localImage) {
                             displayImage = localImage;
+                        } else if (dbImage && (dbImage.startsWith('data:image') || dbImage.startsWith('http'))) {
+                            displayImage = dbImage;
                         } else if (imageUrl && imageUrl.startsWith('ipfs://') && !imageUrl.includes('bafybeidmeme')) {
                             displayImage = imageUrl.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
+                        } else if (dbImage && dbImage.startsWith('ipfs://') && !dbImage.includes('bafybeidmeme')) {
+                            displayImage = dbImage.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
                         }
 
                         // Fix: Check if symbol already has $
@@ -802,6 +843,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const creators = {}; // { address: count }
             const memes = [];    // [ { name, symbol, address, imageUrl } ]
+
+            // Fetch images from Supabase to augment the logs
+            let supabaseImageMap = {};
+            try {
+                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+                const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                const supabase = createClient(supabaseUrl, supabaseAnonKey);
+                const { data: memetokens } = await supabase.from('meme_tokens').select('token_address, image_url');
+                if (memetokens) {
+                    memetokens.forEach(item => {
+                        if (item.image_url) {
+                            supabaseImageMap[item.token_address.toLowerCase()] = item.image_url;
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn("Failed to augment with Supabase images", err);
+            }
 
             data.logs.forEach(log => {
                 try {
@@ -865,10 +924,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             sortedMemes.forEach((meme, i) => {
                 let displayImage = meme.imageUrl && meme.imageUrl.startsWith('http') ? meme.imageUrl : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
                 const localImage = localStorage.getItem(`meme_image_${meme.address.toLowerCase()}`);
+                const dbImage = supabaseImageMap[meme.address.toLowerCase()];
+
                 if (localImage) {
                     displayImage = localImage;
+                } else if (dbImage && (dbImage.startsWith('data:image') || dbImage.startsWith('http'))) {
+                    displayImage = dbImage;
                 } else if (meme.imageUrl && meme.imageUrl.startsWith('ipfs://') && !meme.imageUrl.includes('bafybeidmeme')) {
                     displayImage = meme.imageUrl.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
+                } else if (dbImage && dbImage.startsWith('ipfs://') && !dbImage.includes('bafybeidmeme')) {
+                    displayImage = dbImage.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
                 }
 
                 const item = document.createElement('div');
