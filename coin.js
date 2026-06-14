@@ -1,5 +1,5 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
-import { Interface } from 'ethers';
+import { ethers, Interface } from 'ethers';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // 1. Get Token Address from URL
@@ -40,33 +40,35 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Fallback to Blockchain if Supabase fails
         if (!tokenData) {
-            console.warn("Token not found in Supabase. Falling back to Hedera Mirror Node Logs...");
+            console.warn("Token not found in Supabase. Falling back to Hedera Mirror Node...");
             try {
-                const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/0x9A78619072d24d26e6c3159B4E52D4D3f5D6990a/results/logs?order=desc`);
+                let hederaId = tokenAddress;
+                if (tokenAddress.startsWith('0x')) {
+                    const hexNum = tokenAddress.substring(26);
+                    const accountNum = parseInt(hexNum, 16);
+                    hederaId = `0.0.${accountNum}`;
+                }
+                const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/tokens/${hederaId}`);
                 if (response.ok) {
-                    const logsData = await response.json();
-                    const iface = new Interface([
-                        "event MemeLaunched(address indexed creator, address tokenAddress, string name, string symbol, string imageUrl)"
-                    ]);
-                    for (const log of logsData.logs) {
-                        try {
-                            const parsedLog = iface.parseLog({ data: log.data, topics: log.topics });
-                            if (parsedLog && parsedLog.name === 'MemeLaunched' && parsedLog.args.tokenAddress.toLowerCase() === tokenAddress.toLowerCase()) {
-                                tokenData = {
-                                    name: parsedLog.args.name,
-                                    symbol: parsedLog.args.symbol,
-                                    image_url: parsedLog.args.imageUrl,
-                                    creator_address: parsedLog.args.creator,
-                                    created_at: new Date(parseFloat(log.timestamp) * 1000).toISOString()
-                                };
-                                break;
-                            }
-                        } catch(e) {}
+                    const tokenInfo = await response.json();
+                    if (tokenInfo) {
+                        tokenData = {
+                            name: tokenInfo.name,
+                            symbol: tokenInfo.symbol,
+                            image_url: tokenInfo.memo,
+                            creator_address: tokenInfo.treasury_account_id,
+                            created_at: new Date(parseFloat(tokenInfo.created_timestamp) * 1000).toISOString()
+                        };
                     }
                 }
             } catch(e) {
                 console.error("Mirror Node fallback failed:", e);
             }
+        }
+
+        if (!window.poolAddress) {
+            window.poolAddress = "0xa3bf9adec2fb49fb65c8948aed71c6bf1c4d61c8";
+            window.isSDKRouter = true;
         }
 
         if (!tokenData) {
@@ -91,7 +93,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (localImage) {
             displayImage = localImage;
         } else if (tokenData.image_url && tokenData.image_url.startsWith('ipfs://') && !tokenData.image_url.includes('bafybeidmeme')) {
-            displayImage = tokenData.image_url.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
+            displayImage = tokenData.image_url.replace('ipfs://', 'https://ipfs.io/ipfs/');
+        } else if (tokenData.image_url && (tokenData.image_url.startsWith('Qm') || tokenData.image_url.startsWith('bafy'))) {
+            displayImage = `https://ipfs.io/ipfs/${tokenData.image_url}`;
         }
         document.getElementById('token-image').src = displayImage;
         
@@ -178,11 +182,6 @@ function initChart() {
 
     candlestickSeries.setData(data);
     
-    // Update stat card dynamically
-    document.getElementById('stat-price').textContent = `$${currentPrice.toFixed(8)}`;
-    document.getElementById('stat-mcap').textContent = `$${(currentPrice * 1000000000).toLocaleString()}`; // assuming 1B supply
-    document.getElementById('stat-volume').textContent = `$${(Math.random() * 50000 + 10000).toLocaleString(undefined, {maximumFractionDigits:0})}`;
-
     // Handle resize
     new ResizeObserver(entries => {
         if (entries.length === 0 || entries[0].target !== chartContainer) { return; }
@@ -225,11 +224,113 @@ function populateDummyTables() {
 
 function setupTradeInterface(tokenAddress) {
     let currentMode = 'buy';
+    let currentSlippage = 0.01; // 1%
     
     const tabBuy = document.getElementById('tab-buy');
     const tabSell = document.getElementById('tab-sell');
     const tradeSubmitBtn = document.getElementById('trade-submit-btn');
     const tradeAmount = document.getElementById('trade-amount');
+    const tradeReceive = document.getElementById('trade-receive');
+    
+    const ROUTER_ADDRESS = "0xa3bf9adec2fb49fb65c8948aed71c6bf1c4d61c8";
+    const ROUTER_ABI = [
+        "function buyJob(address memeAddress, uint256 amountOutMin, address referrer) external payable",
+        "function sellJob(address memeAddress, uint256 amountIn) external",
+        "function getAmountOut(address memeAddress, uint256 amount, uint8 txType) view returns (uint256 value)"
+    ];
+
+    const provider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
+    const routerContract = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, provider);
+
+    async function fetchStats() {
+        try {
+            // Get price: how many tokens 1 HBAR (10^8) buys. txType = 0 for buy
+            const oneHbar = ethers.parseUnits('1', 8);
+            const tokensForOneHbar = await routerContract.getAmountOut(tokenAddress, oneHbar, 0);
+            
+            const tokensAmount = Number(ethers.formatUnits(tokensForOneHbar, 8));
+            if (tokensAmount > 0) {
+                const priceInHbar = 1.0 / tokensAmount;
+                
+                document.getElementById('stat-price-hbar').textContent = `${priceInHbar.toFixed(8)} ℏ`;
+                document.getElementById('stat-price-usd').textContent = `$${(priceInHbar * 0.05).toFixed(8)}`;
+                
+                const mcap = priceInHbar * 1000000000;
+                document.getElementById('stat-mcap-hbar').textContent = `${mcap.toLocaleString(undefined, {maximumFractionDigits:0})} ℏ`;
+                document.getElementById('stat-mcap-usd').textContent = `$${(mcap * 0.05).toLocaleString(undefined, {maximumFractionDigits:2})}`;
+                
+                document.getElementById('stat-volume').textContent = `--- ℏ`;
+            }
+
+            if (window.ethereum) {
+                const ethProvider = new ethers.BrowserProvider(window.ethereum);
+                const signer = await ethProvider.getSigner();
+                const userAddress = await signer.getAddress();
+                
+                const erc20ABI = ["function balanceOf(address owner) view returns (uint256)"];
+                const tokenContract = new ethers.Contract(tokenAddress, erc20ABI, provider);
+                const balance = await tokenContract.balanceOf(userAddress);
+                window.currentTokenBalance = ethers.formatUnits(balance, 8);
+                
+                if (currentMode === 'sell') {
+                    document.getElementById('trade-balance').textContent = `${window.currentTokenBalance} Tokens`;
+                }
+            }
+        } catch(e) {
+            console.warn("Failed to fetch live stats", e);
+        }
+    }
+
+    fetchStats();
+    setInterval(fetchStats, 10000); // refresh every 10s
+
+    async function updateReceiveAmount() {
+        const amount = parseFloat(tradeAmount.value);
+        if (!amount || amount <= 0) {
+            tradeReceive.value = '';
+            return;
+        }
+
+        try {
+            const amountIn = ethers.parseUnits(amount.toString(), 8); // Assuming 8 decimals for HBAR and Token
+            let amountOut;
+            if (currentMode === 'buy') {
+                amountOut = await routerContract.getAmountOut(tokenAddress, amountIn, 0);
+            } else {
+                amountOut = await routerContract.getAmountOut(tokenAddress, amountIn, 1);
+            }
+            tradeReceive.value = ethers.formatUnits(amountOut, 8);
+        } catch(e) {
+            tradeReceive.value = '';
+        }
+    }
+
+    tradeAmount.addEventListener('input', updateReceiveAmount);
+
+    const slippageBtns = document.querySelectorAll('.slippage-btns button');
+    slippageBtns.forEach(btn => {
+        btn.onclick = () => {
+            slippageBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentSlippage = parseFloat(btn.textContent) / 100;
+        };
+    });
+
+    const percentBtns = document.querySelectorAll('.percent-btns button');
+    percentBtns.forEach(btn => {
+        btn.onclick = () => {
+            let balanceStr = currentMode === 'buy' ? window.currentHbarBalance : window.currentTokenBalance;
+            let balance = parseFloat(balanceStr || '0');
+            
+            if (btn.classList.contains('max-btn') || btn.textContent === 'MAX') {
+                tradeAmount.value = balance;
+            } else {
+                const pct = parseFloat(btn.textContent) / 100;
+                tradeAmount.value = (balance * pct).toFixed(4);
+            }
+            updateReceiveAmount();
+        };
+    });
 
     tabBuy.onclick = () => {
         currentMode = 'buy';
@@ -238,6 +339,7 @@ function setupTradeInterface(tokenAddress) {
         tradeSubmitBtn.textContent = 'Buy Token';
         tradeSubmitBtn.style.background = '#10b981';
         document.getElementById('trade-balance').textContent = window.currentHbarBalance ? `${window.currentHbarBalance} HBAR` : '0 HBAR';
+        updateReceiveAmount();
     };
 
     tabSell.onclick = () => {
@@ -246,17 +348,17 @@ function setupTradeInterface(tokenAddress) {
         tabBuy.classList.remove('active');
         tradeSubmitBtn.textContent = 'Sell Token';
         tradeSubmitBtn.style.background = '#ef4444';
-        document.getElementById('trade-balance').textContent = '500,000 Tokens';
+        document.getElementById('trade-balance').textContent = window.currentTokenBalance ? `${window.currentTokenBalance} Tokens` : '0 Tokens';
+        updateReceiveAmount();
     };
 
-    // Smart Contract Interaction Mockup
     tradeSubmitBtn.onclick = async () => {
         if (!window.ethereum) {
-            alert("Please install HashPack or MetaMask!");
+            alert("Please connect a wallet!");
             return;
         }
 
-        const amount = tradeAmount.value;
+        const amount = parseFloat(tradeAmount.value);
         if (!amount || amount <= 0) {
             alert("Enter a valid amount!");
             return;
@@ -266,27 +368,32 @@ function setupTradeInterface(tokenAddress) {
         tradeSubmitBtn.disabled = true;
 
         try {
-            const provider = new ethers.BrowserProvider(window.ethereum);
-            const signer = await provider.getSigner();
+            const ethProvider = new ethers.BrowserProvider(window.ethereum);
+            const signer = await ethProvider.getSigner();
+            const router = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, signer);
+            const amountIn = ethers.parseUnits(amount.toString(), 8);
             
-            // NOTE: Here we will connect directly to the V3 Token Contract
-            // For now, we simulate a successful transaction
-            await new Promise(r => setTimeout(r, 2000));
+            const slippageFactor = 10000n - BigInt(Math.floor(currentSlippage * 10000));
 
-            /* 
-            const contractABI = [ ... ];
-            const contract = new ethers.Contract(tokenAddress, contractABI, signer);
             if (currentMode === 'buy') {
-                const tx = await contract.buyTokens({ value: ethers.parseEther(amount) });
+                const amountOut = await routerContract.getAmountOut(tokenAddress, amountIn, 0);
+                const amountOutMin = (amountOut * slippageFactor) / 10000n;
+                const tx = await router.buyJob(tokenAddress, amountOutMin, ethers.ZeroAddress, { value: amountIn });
                 await tx.wait();
             } else {
-                const tx = await contract.sellTokens(ethers.parseUnits(amount, 18));
+                const erc20ABI = ["function approve(address spender, uint256 amount) external returns (bool)"];
+                const tokenContract = new ethers.Contract(tokenAddress, erc20ABI, signer);
+                const approveTx = await tokenContract.approve(ROUTER_ADDRESS, amountIn);
+                await approveTx.wait();
+
+                const tx = await router.sellJob(tokenAddress, amountIn);
                 await tx.wait();
             }
-            */
            
             alert(`SUCCESS! Successfully ${currentMode === 'buy' ? 'bought' : 'sold'} tokens.`);
             tradeAmount.value = '';
+            tradeReceive.value = '';
+            fetchStats();
 
         } catch (error) {
             console.error(error);
