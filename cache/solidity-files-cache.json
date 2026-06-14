@@ -1,0 +1,382 @@
+{
+  "_format": "hh-sol-cache-2",
+  "files": {
+    "C:\\Users\\remyu\\OneDrive\\Desktop\\Hedera dot meme\\contracts\\LiquidityPoolHTS.sol": {
+      "lastModificationDate": 1781429608212,
+      "contentHash": "1654d660d279732ee0960c12cf041256",
+      "sourceName": "contracts/LiquidityPoolHTS.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "@openzeppelin/contracts/token/ERC20/IERC20.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "IHederaTokenServicePool",
+        "LiquidityPoolHTS"
+      ]
+    },
+    "C:\\Users\\remyu\\OneDrive\\Desktop\\Hedera dot meme\\node_modules\\@openzeppelin\\contracts\\token\\ERC20\\IERC20.sol": {
+      "lastModificationDate": 1781209280130,
+      "contentHash": "9261adf6457863de3e9892f51317ec89",
+      "sourceName": "@openzeppelin/contracts/token/ERC20/IERC20.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        ">=0.4.16"
+      ],
+      "artifacts": [
+        "IERC20"
+      ]
+    },
+    "C:\\Users\\remyu\\OneDrive\\Desktop\\Hedera dot meme\\contracts\\TokenFactoryHTS.sol": {
+      "lastModificationDate": 1781429644984,
+      "contentHash": "d370851881a246bbae8fd16ceca78b77",
+      "sourceName": "contracts/TokenFactoryHTS.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "./LiquidityPoolHTS.sol",
+        "@openzeppelin/contracts/token/ERC20/IERC20.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "IHederaTokenService",
+        "TokenFactoryHTS"
+      ]
+    },
+    "C:\\Users\\remyu\\OneDrive\\Desktop\\Hedera dot meme\\contracts\\MemeDex.sol": {
+      "lastModificationDate": 1780682417087,
+      "contentHash": "ea5cc407950ac1ccd4ddb0fd7907b434",
+      "sourceName": "contracts/MemeDex.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "IERC20",
+        "MemeDex"
+      ]
+    },
+    "C:\\Users\\remyu\\OneDrive\\Desktop\\Hedera dot meme\\contracts\\MemeFactoryHTS.sol": {
+      "lastModificationDate": 1778953478214,
+      "contentHash": "22ad2c78496a064c60a352698fef350e",
+      "sourceName": "contracts/MemeFactoryHTS.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "IHederaTokenService",
+        "MemeFactoryHTS"
+      ]
+    },
+    "C:\\Users\\remyu\\OneDrive\\Desktop\\Hedera dot meme\\contracts\\MemeFactoryHTSDelegate.sol": {
+      "lastModificationDate": 1778041644772,
+      "contentHash": "df9e818e7525b7e5a9fac7bef0f85e3d",
+      "sourceName": "contracts/MemeFactoryHTSDelegate.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "IHederaTokenService",
+        "MemeFactoryHTSDelegate"
+      ]
+    },
+    "C:\\Users\\remyu\\OneDrive\\Desktop\\Hedera dot meme\\contracts\\MemeFactoryHTSPrecompile.sol": {
+      "lastModificationDate": 1778018647920,
+      "contentHash": "d2506496bd3592d1b3de693f155d264e",
+      "sourceName": "contracts/MemeFactoryHTSPrecompile.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "IHederaTokenService",
+        "MemeFactoryHTSPrecompile"
+      ]
+    },
+    "C:\\Users\\remyu\\OneDrive\\Desktop\\Hedera dot meme\\contracts\\MemeFactoryV2.sol": {
+      "lastModificationDate": 1779894193826,
+      "contentHash": "c85398337f17e7671f434b192ae41475",
+      "sourceName": "contracts/MemeFactoryV2.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "IHederaTokenService",
+        "MemeFactory"
+      ]
+    },
+    "C:\\Users\\remyu\\OneDrive\\Desktop\\Hedera dot meme\\contracts\\MemeFactoryV3.sol": {
+      "lastModificationDate": 1779993963523,
+      "contentHash": "0d689ec54440b06c5365885add7b3a14",
+      "sourceName": "contracts/MemeFactoryV3.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "IERC20",
+        "MemeFactoryV3",
+        "MemeToken"
+      ]
+    },
+    "C:\\Users\\remyu\\OneDrive\\Desktop\\Hedera dot meme\\contracts\\MemeFactoryV4.sol": {
+      "lastModificationDate": 1780682395739,
+      "contentHash": "e13a30d5056197f22324a27b218e7290",
+      "sourceName": "contracts/MemeFactoryV4.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "IERC20",
+        "IMemeDex",
+        "MemeFactoryV4",
+        "MemeToken"
+      ]
+    }
+  }
+}

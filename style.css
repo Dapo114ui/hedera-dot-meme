@@ -676,6 +676,11 @@ body {
     width: 100%;
 }
 
+.form-group input::placeholder {
+    color: rgba(255, 255, 255, 0.25);
+    font-weight: 500;
+}
+
 .launch-summary {
     background-color: #2a2512; /* Dark brownish */
     border-radius: 12px;
@@ -1543,3 +1548,127 @@ body {
 .type-buy { color: #10b981; font-weight: 600; font-size: 0.8rem; padding: 2px 6px; background: rgba(16,185,129,0.1); border-radius: 4px; }
 .type-sell { color: #ef4444; font-weight: 600; font-size: 0.8rem; padding: 2px 6px; background: rgba(239,68,68,0.1); border-radius: 4px; }
 
+/* Portfolio Dashboard Styles */
+.profile-header-card {
+    background: rgba(26, 26, 46, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 30px;
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    margin-bottom: 20px;
+}
+
+@media (max-width: 768px) {
+    .profile-header-card {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 20px;
+    }
+}
+
+.profile-avatar-container {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 2px solid rgba(255, 215, 0, 0.5);
+    flex-shrink: 0;
+}
+
+.profile-avatar {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.profile-info-container {
+    flex-grow: 1;
+}
+
+.profile-address-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.profile-address {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0;
+    color: white;
+}
+
+.copy-address-pill {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 4px 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.copy-address-pill:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+.profile-stats-container {
+    display: flex;
+    gap: 30px;
+}
+
+.profile-stat-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.stat-value-large {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: white;
+}
+
+.stat-label-small {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.portfolio-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    margin-bottom: 30px;
+}
+
+.portfolio-tab {
+    background: none;
+    border: none;
+    padding: 15px 25px;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.portfolio-tab:hover {
+    color: white;
+}
+
+.portfolio-tab.active {
+    color: white;
+    border-bottom-color: var(--primary-color);
+}

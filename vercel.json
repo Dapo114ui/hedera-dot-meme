@@ -1,3 +1,9 @@
 {
-  "cleanUrls": true
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/api/supabase/(.*)",
+      "destination": "https://qwcuywcuzaygrimnqobh.supabase.co/$1"
+    }
+  ]
 }
