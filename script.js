@@ -7,10 +7,13 @@ import {
     AccountId, 
     TokenType, 
     TokenSupplyType,
-    TransactionId
+    TransactionId,
+    TokenId,
+    ContractId
 } from '@hashgraph/sdk';
-import { Interface, parseUnits, BrowserProvider, Contract, parseEther } from 'ethers';
+import { Interface, parseUnits, formatUnits, BrowserProvider, Contract, parseEther, JsonRpcProvider } from 'ethers';
 import { appkit } from './wallet.js';
+import { CONTRACT_DEPLOYMENTS, createAdapter, getChain, MJClient, EvmAdapter } from "@buidlerlabs/memejob-sdk-js";
 
 let selectedMemeFile = null;
 
@@ -23,10 +26,10 @@ window.onerror = function(msg, url, line, col, error) {
 // Global check for debugging
 console.log("Hedera dot meme script v6.0 (Pure ERC20 Contract) loaded!");
 
-const CONTRACT_ADDRESS_V2 = "0x9A78619072d24d26e6c3159B4E52D4D3f5D6990a"; // V3 Pure ERC20
+const CONTRACT_ADDRESS_V2 = "0x1601d39146bfcA0745376c394EAa270cb841662C"; // TokenFactoryHTS
 const ABI_V2 = [
-    "function createMemeToken(string name, string symbol, uint256 initialSupply, string imageUrl) payable returns (address)",
-    "event MemeLaunched(address indexed creator, address tokenAddress, string name, string symbol, string imageUrl)"
+    "function createToken(string name, string symbol, string memo, int64 initialSupply) payable returns (address, address)",
+    "event TokenCreated(address indexed tokenAddress, address indexed liquidityPool, string name, string symbol, string memo)"
 ];
 document.addEventListener('DOMContentLoaded', async () => {
 
@@ -142,13 +145,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let hashpackProvider = null;
     
-    // EIP-6963 Provider Discovery
+    // EIP-6963 Provider Discovery (Passive listen only, no active dispatch)
     window.addEventListener("eip6963:announceProvider", (event) => {
         if (event.detail?.info?.name?.toLowerCase().includes('hashpack')) {
             hashpackProvider = event.detail.provider;
         }
     });
-    window.dispatchEvent(new Event("eip6963:requestProvider"));
 
     const getProvider = async () => {
         // Wait briefly in case EIP-6963 is still announcing
@@ -162,6 +164,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (window.ethereum?.isHashPack) return window.ethereum;
         if (window.ethereum) return window.ethereum;
         return null;
+    };
+
+    // Expose for other modules like coin.js
+    window.getUniversalProvider = async () => {
+        let universalProvider = null;
+        if (appkit && typeof appkit.getProvider === 'function') {
+            universalProvider = appkit.getProvider('eip155') || appkit.getProvider('hedera');
+        }
+        if (!universalProvider) {
+            universalProvider = await getProvider();
+        }
+        return universalProvider;
     };
 
     const connectWallet = async () => {
@@ -265,28 +279,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error("Initial sync error:", e);
     }
 
-    // Use Event Delegation for Connect/Launch/Copy
-    document.addEventListener('click', async (e) => {
-        const copyBtn = e.target.closest('.copy-btn');
-        if (copyBtn) {
-            e.preventDefault();
-            e.stopPropagation();
-            const addressToCopy = copyBtn.dataset.address;
-            if (addressToCopy) {
-                navigator.clipboard.writeText(addressToCopy);
-                copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
-                setTimeout(() => {
-                    copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
-                }, 2000);
+    // Explicitly bind the wallet connection logic strictly by ID/class to avoid global popup spam
+    const customWalletBtn = document.getElementById('custom-wallet-btn');
+    if (customWalletBtn) {
+        customWalletBtn.addEventListener('click', async (e) => {
+            const copyBtn = e.target.closest('.copy-btn');
+            if (copyBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                const addressToCopy = copyBtn.dataset.address;
+                if (addressToCopy) {
+                    navigator.clipboard.writeText(addressToCopy);
+                    copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+                    setTimeout(() => {
+                        copyBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+                    }, 2000);
+                }
+                return;
             }
-            return;
-        }
 
-        const walletBtn = e.target.closest('#custom-wallet-btn') || e.target.closest('.connect-wallet-trigger');
-        if (walletBtn) {
+            e.preventDefault();
             if (currentUserNative) {
                 if (confirm("Disconnect?")) {
-                    try { await appkit.disconnect(); } catch(e){}
+                    try { await appkit.disconnect(); } catch(err){}
                     currentUserEvm = null;
                     currentUserNative = null;
                     updateWalletUI();
@@ -294,23 +309,32 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 connectWallet();
             }
-            return;
-        }
+        });
+    }
 
-        const btn = e.target.closest('.launch-submit-btn');
-        if (!btn) return;
+    document.querySelectorAll('.connect-wallet-trigger').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (!currentUserNative) connectWallet();
+        });
+    });
 
-        e.preventDefault();
-        
-        if (!currentUserNative) {
-            const connected = await connectWallet();
-            if (!connected) return;
-        }
+    // Explicitly bind the launch submit button
+    const launchSubmitBtnElem = document.querySelector('.launch-submit-btn');
+    if (launchSubmitBtnElem) {
+        launchSubmitBtnElem.addEventListener('click', async (e) => {
+            e.preventDefault();
+            
+            if (!currentUserNative) {
+                const connected = await connectWallet();
+                if (!connected) return;
+            }
 
-        console.log("CRITICAL: Executing Pure Extension Launch v3.0", currentUserNative);
+            console.log("CRITICAL: Executing Pure Extension Launch v3.0", currentUserNative);
 
-        btn.disabled = true;
-        btn.innerHTML = `<span>Preparing Launch...</span>`;
+            const btn = launchSubmitBtnElem;
+            btn.disabled = true;
+            btn.innerHTML = `<span>Preparing Launch...</span>`;
 
         try {
             let universalProvider = null;
@@ -323,29 +347,63 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!universalProvider) throw new Error("Wallet provider not initialized or not found.");
 
             console.log("CRITICAL: Executing Native Launch via UniversalProvider v5.0", currentUserNative);
-            const name = document.getElementById('tokenName')?.value || "My Meme";
-            const symbol = document.getElementById('ticker')?.value || "MEME";
+            const name = document.getElementById('tokenName')?.value || "My Awesome Meme";
+            const symbol = document.getElementById('ticker')?.value || "$MEME";
             const supplyInput = document.getElementById('initialSupply')?.value || "1000000000";
             const cleanSupply = parseInt(supplyInput.replace(/,/g, '')) || 0;
             
+            const desc = document.getElementById('tokenDescription')?.value || "";
+            const twitter = document.getElementById('socialTwitter')?.value || "";
+            const telegram = document.getElementById('socialTelegram')?.value || "";
+            const website = document.getElementById('socialWebsite')?.value || "";
+            
             let memo = `ipfs://bafybeidmeme${Math.random().toString(36).substring(7)}`;
+            let finalDbImageUrl = memo;
+            
             if (selectedMemeFile) {
-                btn.innerHTML = `<span>Uploading Image...</span>`;
+                btn.innerHTML = `<span>Uploading Metadata...</span>`;
                 const formData = new FormData();
                 formData.append('file', selectedMemeFile);
                 try {
-                    const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+                    // 1. Upload Image
+                    const imgRes = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
                         method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${import.meta.env.VITE_PINATA_JWT}`
-                        },
+                        headers: { 'Authorization': `Bearer ${import.meta.env.VITE_PINATA_JWT}` },
                         body: formData
                     });
-                    const data = await response.json();
-                    if (!response.ok) {
-                        console.warn("Pinata API Error (Falling back to default image):", data.error || data);
-                    } else if (data?.IpfsHash) {
-                        memo = `https://gateway.pinata.cloud/ipfs/${data.IpfsHash}`;
+                    const imgData = await imgRes.json();
+                    if (imgData?.IpfsHash) {
+                        const imageUri = `ipfs://${imgData.IpfsHash}`;
+                        finalDbImageUrl = `https://ipfs.io/ipfs/${imgData.IpfsHash}`;
+                        
+                        const jsonMetadata = {
+                            name: name,
+                            description: desc,
+                            image: imageUri,
+                            properties: {
+                                twitter: twitter,
+                                telegram: telegram,
+                                website: website
+                            }
+                        };
+                        
+                        const jsonRes = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
+                            method: 'POST',
+                            headers: { 
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${import.meta.env.VITE_PINATA_JWT}` 
+                            },
+                            body: JSON.stringify({
+                                pinataContent: jsonMetadata,
+                                pinataMetadata: { name: `${symbol}_metadata.json` }
+                            })
+                        });
+                        const jsonData = await jsonRes.json();
+                        if (jsonData?.IpfsHash) {
+                            memo = `ipfs://${jsonData.IpfsHash}`;
+                        } else {
+                            memo = finalDbImageUrl; // Fallback to just image
+                        }
                     } else {
                         console.warn("Pinata upload failed silently (no hash). Falling back to default.");
                     }
@@ -355,36 +413,31 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             btn.innerHTML = `<span>Approving Meme Launch...</span>`;
 
-            const ethersProvider = new BrowserProvider(universalProvider);
-            const signer = await ethersProvider.getSigner();
-            const contract = new Contract(CONTRACT_ADDRESS_V2, ABI_V2, signer);
-            
-            console.log("Step 1: Sending EVM Payload with 1 HBAR buffer for gas (fully refunded)");
+            // Setup MJClient
+            const chain = getChain('testnet');
+            const adapter = createAdapter(EvmAdapter, {
+                ethereumProvider: universalProvider
+            });
+            const client = new MJClient(adapter, {
+                chain: chain,
+                contractId: ContractId.fromEvmAddress(0, 0, CONTRACT_DEPLOYMENTS.testnet.evmAddress),
+            });
 
-            const createTx = await contract.createMemeToken(name, symbol, cleanSupply, memo, {
-                value: parseEther("1.0"), // Send 1 HBAR buffer to ensure execution, V3 automatically refunds it
-                gasLimit: 4000000
+            console.log("Creating Token with SDK...");
+            const mjToken = await client.createToken({
+                name: name,
+                symbol: symbol,
+                memo: memo
+            }, {
+                amount: 500000000n // 5 HBAR in tinybars to act as initial buy buffer and prevent OVERFLOW(17)
             });
             
-            console.log("Creation Tx Response:", createTx.hash);
-            btn.innerHTML = `<span>Finalizing...</span>`;
+            console.log("Token Created!", mjToken.tokenId);
+            const tokenIdStr = mjToken.tokenId.toString();
+            const parts = tokenIdStr.split('.');
+            let newTokenAddress = `0x000000000000000000000000${parseInt(parts[2]).toString(16).padStart(16, '0')}`;
             
-            const receipt = await createTx.wait();
-            console.log("Transaction Confirmed:", receipt);
-
-            let newTokenAddress = "Unknown";
-            try {
-                for (const log of receipt.logs) {
-                    try {
-                        const parsedLog = contract.interface.parseLog({ data: log.data, topics: log.topics });
-                        if (parsedLog && parsedLog.name === 'MemeLaunched') {
-                            newTokenAddress = parsedLog.args.tokenAddress;
-                        }
-                    } catch (e) {}
-                }
-            } catch(e) {}
-
-            let finalDbImageUrl = memo;
+            btn.innerHTML = `<span>Finalizing...</span>`;
 
             if (selectedMemeFile && newTokenAddress !== "Unknown") {
                 try {
@@ -421,7 +474,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     
                     // If the memo is our fake IPFS hash (because Pinata failed), 
                     // use the Base64 image directly for Supabase so other users can see it!
-                    if (memo.includes('bafybeidmeme') || memo.startsWith('ipfs://')) {
+                    if (finalDbImageUrl.includes('bafybeidmeme') || finalDbImageUrl.startsWith('ipfs://')) {
                         finalDbImageUrl = dataUrl;
                     }
                 } catch(e) {
@@ -430,63 +483,80 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             try {
-                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+                const supabaseUrl = window.location.origin + "/api/supabase";
                 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
                 const supabase = createClient(supabaseUrl, supabaseAnonKey);
                 
-                const { error } = await supabase.from('meme_tokens').insert([
-                    {
-                        token_address: newTokenAddress,
-                        creator_address: await signer.getAddress(),
+                try {
+                    const payload = {
+                        token_address: newTokenAddress.toLowerCase(),
+                        creator_address: (await signer.getAddress()).toLowerCase(),
                         name: name,
                         symbol: symbol,
-                        image_url: finalDbImageUrl
+                        image_url: finalDbImageUrl,
+                        description: desc,
+                        twitter_url: twitter
+                    };
+                    console.log("Payload being sent to Supabase:", { token_address: payload.token_address, creator_address: payload.creator_address });
+                    const { error } = await supabase.from('meme_tokens').insert([payload]);
+                    if (error) {
+                        console.error("Supabase insert error details:", error);
+                        throw error;
                     }
-                ]);
-                if (error) console.error("Supabase insert error:", error);
-                else {
                     console.log("Successfully indexed in Supabase!");
-                    // 1. Dynamically grab the elements only when needed
-                    const successModal = document.getElementById('successModal');
-                    const viewMarketBtn = document.getElementById('viewMarketBtn');
-                    const closeModalBtn = document.getElementById('closeModalBtn');
-                    // Safely find the form, even if the ID is different
-                    const formToReset = document.getElementById('launchForm') || document.querySelector('.launch-form');
+                } catch (dbError) {
+                    console.error("Failed to write to Supabase database:", dbError);
+                }
+                // 1. Dynamically grab the elements only when needed
+                const successModal = document.getElementById('successModal');
+                const viewMarketBtn = document.getElementById('viewMarketBtn');
+                const closeModalBtn = document.getElementById('closeModalBtn');
+                // Safely find the form, even if the ID is different
+                const formToReset = document.getElementById('launchForm') || document.querySelector('.launch-form');
 
-                    // 2. Ensure the modal actually exists in the DOM before manipulating it
-                    if (successModal) {
-                        successModal.classList.add('active');
+                // 2. Ensure the modal actually exists in the DOM before manipulating it
+                if (successModal) {
+                    successModal.classList.add('active');
 
-                        viewMarketBtn.onclick = () => { window.location.href = 'markets.html'; };
-                        
-                        closeModalBtn.onclick = () => {
-                            successModal.classList.remove('active');
-                            if (formToReset) {
-                                formToReset.reset(); // Safely clear the inputs
-                            }
-                            document.getElementById('photo-preview').style.display = 'none';
-                            document.getElementById('upload-placeholder').style.display = 'block';
-                            btn.innerHTML = `<span>Launch Meme</span>`;
-                            btn.disabled = false;
-                        };
-                    } else {
-                        console.error("Success modal HTML is missing from the page!");
-                    }
+                    viewMarketBtn.onclick = () => { window.location.href = 'markets.html'; };
+                    
+                    closeModalBtn.onclick = () => {
+                        successModal.classList.remove('active');
+                        if (formToReset) {
+                            formToReset.reset(); // Safely clear the inputs
+                        }
+                        document.getElementById('photo-preview').style.display = 'none';
+                        document.getElementById('upload-placeholder').style.display = 'block';
+                        btn.innerHTML = `<span>Launch Meme</span>`;
+                        btn.disabled = false;
+                    };
+                } else {
+                    console.error("Success modal HTML is missing from the page!");
                 }
             } catch (e) {
-                console.error("Failed to index in Supabase:", e);
+                console.error("Supabase Insert Failed:", e);
                 // Fallback if supabase fails but token is created
-                alert(`SUCCESS! Your Meme Token is live.`);
+                alert(`SUCCESS! Your Meme Token is live. (Note: Database indexing failed, image might not appear)`);
                 window.location.href = 'markets.html';
             }
 
-        } catch (err) {
-            console.error("Native Launch Error:", err);
-            alert(`Launch Failed: ${err.message || "User rejected or wallet error"}`);
-            btn.disabled = false;
-            btn.innerHTML = `<span>Launch Meme</span>`;
-        }
-    });
+            } catch (err) {
+                console.error("Native Launch Error:", err);
+                alert(`Launch Failed: ${err.message || "User rejected or wallet error"}`);
+            } finally {
+                try {
+                    // If it succeeded, the modal handles button reset. 
+                    // But just in case, we ensure it's not permanently disabled!
+                    btn.disabled = false;
+                    if (!document.getElementById('successModal')?.classList.contains('active')) {
+                        btn.innerHTML = `<span>Launch Meme</span>`;
+                    }
+                } catch (cleanupError) {
+                    console.error("Error resetting launch UI:", cleanupError);
+                }
+            }
+        });
+    }
 
     const photoUploadArea = document.getElementById('photo-upload-area');
     const memePhotoInput = document.getElementById('memePhoto');
@@ -547,169 +617,292 @@ document.addEventListener('DOMContentLoaded', async () => {
     const portfolioGrid = document.getElementById('portfolio-grid');
     const portfolioStatus = document.getElementById('portfolio-status');
     const profileArea = document.getElementById('profile-area');
-    const pfpInput = document.getElementById('pfp-input');
-    const pfpUploadBtn = document.getElementById('pfp-upload-btn');
+    const portfolioTabsContainer = document.getElementById('portfolio-tabs-container');
+    const profileAddressDisplay = document.getElementById('profile-address-display');
+    const copyAddressText = document.getElementById('copy-address-text');
+    const copyAddressBtn = document.getElementById('copy-address-btn');
     const pfpImg = document.getElementById('pfp-img');
-    const pfpPlaceholder = document.getElementById('pfp-placeholder');
+    const tabPortfolio = document.getElementById('tab-portfolio');
+    const tabLaunched = document.getElementById('tab-launched');
+    const statTokensHeld = document.getElementById('stat-tokens-held');
+    const statTokensLaunched = document.getElementById('stat-tokens-launched');
+
+    let currentPortfolioTab = 'held'; // 'held' or 'launched'
 
     if (portfolioGrid) {
         window.refreshPortfolioUI = () => {
             if (currentUserNative && currentUserEvm) {
                 if (portfolioStatus) portfolioStatus.style.display = 'none';
-                if (profileArea) profileArea.style.display = 'block';
+                if (profileArea) profileArea.style.display = 'flex';
+                if (portfolioTabsContainer) portfolioTabsContainer.style.display = 'flex';
 
-                // Load PFP
-                const savedPfp = localStorage.getItem(`pfp_${currentUserEvm.toLowerCase()}`);
-                if (savedPfp) {
-                    pfpImg.src = savedPfp;
-                    pfpImg.style.display = 'block';
-                    pfpPlaceholder.style.display = 'none';
+                // Truncate address for display
+                const addr = currentUserEvm;
+                const truncated = addr.substring(0, 6) + '...' + addr.substring(addr.length - 4);
+                if (profileAddressDisplay) profileAddressDisplay.innerText = truncated;
+                if (copyAddressText) copyAddressText.innerText = truncated;
+
+                // Generate Blockie Avatar
+                if (pfpImg && window.blockies) {
+                    try {
+                        const icon = window.blockies.create({
+                            seed: addr.toLowerCase(),
+                            size: 8,
+                            scale: 10
+                        });
+                        pfpImg.src = icon.toDataURL();
+                    } catch (e) {
+                        console.error("Blockie generation failed", e);
+                    }
                 }
 
-                loadPortfolio(currentUserEvm);
+                if (copyAddressBtn) {
+                    copyAddressBtn.onclick = () => {
+                        navigator.clipboard.writeText(addr);
+                        const oldText = copyAddressText.innerText;
+                        copyAddressText.innerText = 'Copied!';
+                        setTimeout(() => copyAddressText.innerText = oldText, 2000);
+                    };
+                }
+
+                if (tabPortfolio && tabLaunched) {
+                    tabPortfolio.onclick = () => {
+                        currentPortfolioTab = 'held';
+                        tabPortfolio.classList.add('active');
+                        tabLaunched.classList.remove('active');
+                        loadTokensHeld(addr);
+                    };
+                    tabLaunched.onclick = () => {
+                        currentPortfolioTab = 'launched';
+                        tabLaunched.classList.add('active');
+                        tabPortfolio.classList.remove('active');
+                        loadLaunchedMemes(addr);
+                    };
+                }
+
+                // Initial Load
+                if (currentPortfolioTab === 'held') {
+                    loadTokensHeld(addr);
+                } else {
+                    loadLaunchedMemes(addr);
+                }
+                
+                // Always fetch launched count to update the header stat
+                updateLaunchedCount(addr);
             } else {
                 if (portfolioStatus) portfolioStatus.style.display = 'block';
                 if (profileArea) profileArea.style.display = 'none';
+                if (portfolioTabsContainer) portfolioTabsContainer.style.display = 'none';
                 portfolioGrid.innerHTML = '';
             }
         };
 
-        // PFP Upload Logic
-        if (pfpUploadBtn && pfpInput) {
-            pfpUploadBtn.addEventListener('click', () => pfpInput.click());
-            pfpInput.addEventListener('change', async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
+        async function updateLaunchedCount(userAddress) {
+            try {
+                const supabaseUrl = window.location.origin + "/api/supabase";
+                const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                const supabase = createClient(supabaseUrl, supabaseAnonKey);
+                
+                const { count, error } = await supabase
+                    .from('meme_tokens')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('creator_address', userAddress.toLowerCase());
+                
+                if (!error && count !== null) {
+                    if (statTokensLaunched) statTokensLaunched.innerText = count.toString();
+                }
+            } catch (e) {
+                console.error("Failed to fetch launched count", e);
+            }
+        }
 
-                const address = currentUserEvm;
-                if (!address) return;
+        async function loadTokensHeld(userAddress) {
+            try {
+                portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6;">Loading your portfolio... <br><small>Checking balances across the DEX...</small></div>';
+                
+                const supabaseUrl = window.location.origin + "/api/supabase";
+                const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-                // Show loading state
-                pfpPlaceholder.style.opacity = '0.3';
+                // Fetch all tokens
+                const { data: allTokens, error } = await supabase.from('meme_tokens').select('*');
+                if (error) throw error;
 
-                try {
-                    const formData = new FormData();
-                    formData.append('image', file);
-                    const response = await fetch('https://api.imgbb.com/1/upload?key=6712b7a421b471676e7300c015b6028a', {
-                        method: 'POST',
-                        body: formData
-                    });
-                    const data = await response.json();
-                    if (data.success) {
-                        const url = data.data.url;
-                        localStorage.setItem(`pfp_${address.toLowerCase()}`, url);
-                        pfpImg.src = url;
-                        pfpImg.style.display = 'block';
-                        pfpPlaceholder.style.display = 'none';
+                if (!allTokens || allTokens.length === 0) {
+                    portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6;">No tokens available on the DEX yet.</div>';
+                    if (statTokensHeld) statTokensHeld.innerText = "0";
+                    return;
+                }
+
+                // Check balances
+                const rpcProvider = new JsonRpcProvider('https://testnet.hashio.io/api');
+                const ERC20_ABI = ["function balanceOf(address owner) view returns (uint256)"];
+                
+                let tokensHeldCount = 0;
+                let fetchErrors = 0;
+                portfolioGrid.innerHTML = '';
+
+                // Load hidden memes
+                const hiddenKey = `hidden_memes_${userAddress.toLowerCase()}`;
+                const hiddenMemes = JSON.parse(localStorage.getItem(hiddenKey) || "[]");
+
+                // Execute balanceOf concurrently for performance
+                await Promise.all(allTokens.map(async (token) => {
+                    if (hiddenMemes.includes(token.token_address.toLowerCase())) return;
+
+                    try {
+                        const tokenContract = new Contract(token.token_address, ERC20_ABI, rpcProvider);
+                        const balance = await tokenContract.balanceOf(userAddress);
+                        console.log(`Token ${token.symbol} raw balance:`, balance, "Type:", typeof balance);
+                        
+                        // Handle Ethers v6 BigInt explicitly
+                        const balanceBigInt = BigInt(balance);
+                        if (balanceBigInt > 0n) {
+                            tokensHeldCount++;
+                            // Hedera tokens standardly use 8 decimals, not 18
+                            const formattedBalance = parseFloat(formatUnits(balanceBigInt, 8)).toLocaleString(undefined, { maximumFractionDigits: 2 });
+                            renderTokenCard(token, formattedBalance, 'held', hiddenMemes, hiddenKey, userAddress);
+                        }
+                    } catch (err) {
+                        fetchErrors++;
+                        console.error(`Failed to fetch balance for ${token.token_address}`, err);
                     }
-                } catch (err) {
-                    console.error("PFP upload failed:", err);
-                    alert("Failed to upload profile picture.");
-                } finally {
-                    pfpPlaceholder.style.opacity = '1';
+                }));
+
+                if (statTokensHeld) statTokensHeld.innerText = tokensHeldCount.toString();
+
+                if (tokensHeldCount === 0) {
+                    if (fetchErrors > 0) {
+                        portfolioGrid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6; color: #ff4d4d;">Failed to fetch some balances from the network.<br><small>(${fetchErrors} errors recorded. RPC rate limits may be active.)</small></div>`;
+                    } else {
+                        portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6;">You don\'t hold any tokens yet. Start trading!</div>';
+                    }
+                }
+            } catch (error) {
+                console.error("Error loading portfolio:", error);
+                portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #ff4d4d;">Error loading portfolio data.</div>';
+            }
+        }
+
+        async function loadLaunchedMemes(userAddress) {
+            try {
+                portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6;">Loading your launched memes...</div>';
+                
+                const supabaseUrl = window.location.origin + "/api/supabase";
+                const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+                // Fetch tokens where user is creator
+                const { data: launchedTokens, error } = await supabase
+                    .from('meme_tokens')
+                    .select('*')
+                    .eq('creator_address', userAddress.toLowerCase());
+                
+                console.log("Raw Launched Tokens from Supabase:", launchedTokens, "Error if any:", error);
+
+                if (error) throw error;
+
+                if (!launchedTokens || launchedTokens.length === 0) {
+                    portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6;">You haven\'t launched any memes yet. 🚀</div>';
+                    if (statTokensLaunched) statTokensLaunched.innerText = "0";
+                    return;
+                }
+
+                if (statTokensLaunched) statTokensLaunched.innerText = launchedTokens.length.toString();
+                portfolioGrid.innerHTML = '';
+
+                // Load hidden memes
+                const hiddenKey = `hidden_memes_${userAddress.toLowerCase()}`;
+                const hiddenMemes = JSON.parse(localStorage.getItem(hiddenKey) || "[]");
+
+                let displayCount = 0;
+                launchedTokens.forEach(token => {
+                    if (!hiddenMemes.includes(token.token_address.toLowerCase())) {
+                        displayCount++;
+                        renderTokenCard(token, 'Creator', 'launched', hiddenMemes, hiddenKey, userAddress);
+                    }
+                });
+
+                if (displayCount === 0) {
+                    portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6;">All your launched memes are hidden.</div>';
+                }
+            } catch (error) {
+                console.error("Error loading launched memes:", error);
+                portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #ff4d4d;">Error loading launched data.</div>';
+            }
+        }
+
+        function renderTokenCard(token, balanceLabel, tabType, hiddenMemes, hiddenKey, userAddress) {
+            const tokenCard = document.createElement('div');
+            tokenCard.className = 'token-card';
+            tokenCard.style.position = 'relative';
+
+            let displayImage = token.image_url && token.image_url.startsWith('http') ? token.image_url : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
+            const localImage = localStorage.getItem(`meme_image_${token.token_address.toLowerCase()}`);
+            if (localImage) {
+                displayImage = localImage;
+            } else if (token.image_url && token.image_url.startsWith('ipfs://') && !token.image_url.includes('bafybeidmeme')) {
+                displayImage = token.image_url.replace('ipfs://', 'https://ipfs.io/ipfs/');
+            } else if (token.image_url && (token.image_url.startsWith('Qm') || token.image_url.startsWith('bafy'))) {
+                displayImage = `https://ipfs.io/ipfs/${token.image_url}`;
+            }
+            displayImage = displayImage.replace('gateway.pinata.cloud', 'ipfs.io');
+
+            const cleanSymbol = token.symbol.startsWith('$') ? token.symbol : `$${token.symbol}`;
+
+            let badgeHtml = '';
+            if (tabType === 'launched') {
+                badgeHtml = `<span class="hot-badge" style="background: rgba(74, 222, 128, 0.2); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3);">Founder</span>`;
+            }
+
+            tokenCard.innerHTML = `
+                <!-- Delete Button -->
+                <button class="delete-meme-btn" data-address="${token.token_address}" style="position: absolute; top: 15px; right: 15px; background: rgba(255, 77, 77, 0.1); border: 1px solid rgba(255, 77, 77, 0.2); color: #ff4d4d; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s ease;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></svg>
+                </button>
+
+                <div class="card-header">
+                    <div class="token-avatar" style="background: url('${displayImage}') center/cover no-repeat; border-radius: 12px; width: 60px; height: 60px; border: 2px solid rgba(255, 215, 0, 0.2);">
+                    </div>
+                    <div class="token-info">
+                        <div class="token-name-row">
+                            <span class="token-name">${token.name}</span>
+                            ${badgeHtml}
+                        </div>
+                        <span class="token-symbol">${cleanSymbol}</span>
+                    </div>
+                </div>
+                <div class="card-stats">
+                    <div class="stat-group">
+                        <span class="stat-label">Balance</span>
+                        <span class="stat-value" style="color: #ffd700; font-weight: 600;">${balanceLabel}</span>
+                    </div>
+                    <div class="stat-group">
+                        <span class="stat-label">Address</span>
+                        <span class="stat-value" style="font-size: 0.7rem;">${token.token_address.substring(0,6)}...${token.token_address.substring(38)}</span>
+                    </div>
+                </div>
+                <div style="margin-top: 20px; display: grid; grid-template-columns: 1fr; gap: 10px;">
+                    <a href="/coin?address=${token.token_address}" class="filter-btn" style="text-align: center; text-decoration: none; padding: 10px; font-size: 0.8rem;">Trade</a>
+                </div>
+            `;
+
+            // Delete Click Handler
+            const deleteBtn = tokenCard.querySelector('.delete-meme-btn');
+            deleteBtn.addEventListener('click', () => {
+                if (confirm(`Hide ${token.name} from your portfolio? This only hides it from your view.`)) {
+                    hiddenMemes.push(token.token_address.toLowerCase());
+                    localStorage.setItem(hiddenKey, JSON.stringify(hiddenMemes));
+                    tokenCard.style.opacity = '0';
+                    tokenCard.style.transform = 'scale(0.9)';
+                    setTimeout(() => {
+                        if (currentPortfolioTab === 'held') loadTokensHeld(userAddress);
+                        else loadLaunchedMemes(userAddress);
+                    }, 300);
                 }
             });
-        }
-    }
 
-    async function loadPortfolio(userAddress) {
-        try {
-            console.log("Fetching your memes...", userAddress);
-            const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/${CONTRACT_ADDRESS_V2}/results/logs?order=desc`);
-            if (!response.ok) throw new Error("Failed to fetch logs");
-
-            const data = await response.json();
-            const iface = new Interface(ABI_V2);
-
-            portfolioGrid.innerHTML = '';
-            let count = 0;
-
-            // Load hidden memes
-            const hiddenKey = `hidden_memes_${userAddress.toLowerCase()}`;
-            const hiddenMemes = JSON.parse(localStorage.getItem(hiddenKey) || "[]");
-
-            data.logs.forEach(log => {
-                try {
-                    const parsedLog = iface.parseLog({
-                        data: log.data,
-                        topics: log.topics
-                    });
-
-                    if (parsedLog.name === 'MemeLaunched') {
-                        const { creator, tokenAddress, name, symbol, imageUrl } = parsedLog.args;
-
-                        // Check if user is creator AND token isn't hidden
-                        if (creator.toLowerCase() === userAddress.toLowerCase() && !hiddenMemes.includes(tokenAddress.toLowerCase())) {
-                            count++;
-
-                            const tokenCard = document.createElement('div');
-                            tokenCard.className = 'token-card';
-                            tokenCard.style.position = 'relative';
-
-                            let displayImage = imageUrl && imageUrl.startsWith('http') ? imageUrl : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
-                            const localImage = localStorage.getItem(`meme_image_${tokenAddress.toLowerCase()}`);
-                            if (localImage) {
-                                displayImage = localImage;
-                            } else if (imageUrl && imageUrl.startsWith('ipfs://') && !imageUrl.includes('bafybeidmeme')) {
-                                displayImage = imageUrl.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
-                            }
-
-                            tokenCard.innerHTML = `
-                                <!-- Delete Button -->
-                                <button class="delete-meme-btn" data-address="${tokenAddress}" style="position: absolute; top: 15px; right: 15px; background: rgba(255, 77, 77, 0.1); border: 1px solid rgba(255, 77, 77, 0.2); color: #ff4d4d; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 10; transition: all 0.2s ease;">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></svg>
-                                </button>
-
-                                <div class="card-header">
-                                    <div class="token-avatar" style="background: url('${displayImage}') center/cover no-repeat; border-radius: 12px; width: 60px; height: 60px; border: 2px solid rgba(255, 215, 0, 0.2);">
-                                    </div>
-                                    <div class="token-info">
-                                        <div class="token-name-row">
-                                            <span class="token-name">${name}</span>
-                                            <span class="hot-badge" style="background: rgba(74, 222, 128, 0.2); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3);">Founder</span>
-                                        </div>
-                                        <span class="token-symbol">${symbol.startsWith('$') ? symbol : `$${symbol}`}</span>
-                                    </div>
-                                </div>
-                                <div class="card-stats">
-                                    <div class="stat-group">
-                                        <span class="stat-label">Token Address</span>
-                                        <span class="stat-value" style="font-size: 0.7rem;">${tokenAddress}</span>
-                                    </div>
-                                    <div class="stat-group">
-                                        <span class="stat-label">Platform Fee</span>
-                                        <span class="stat-value">1% Paid</span>
-                                    </div>
-                                </div>
-                                <div style="margin-top: 20px; display: grid; grid-template-columns: 1fr; gap: 10px;">
-                                    <a href="/coin?address=${tokenAddress}" class="filter-btn" style="text-align: center; text-decoration: none; padding: 10px; font-size: 0.8rem;">Trade</a>
-                                </div>
-                            `;
-
-                            // Delete Click Handler
-                            const deleteBtn = tokenCard.querySelector('.delete-meme-btn');
-                            deleteBtn.addEventListener('click', () => {
-                                if (confirm(`Hide ${name} from your portfolio? This only hides it from your view, the token still exists on Hedera.`)) {
-                                    hiddenMemes.push(tokenAddress.toLowerCase());
-                                    localStorage.setItem(hiddenKey, JSON.stringify(hiddenMemes));
-                                    tokenCard.style.opacity = '0';
-                                    tokenCard.style.transform = 'scale(0.9)';
-                                    setTimeout(() => loadPortfolio(userAddress), 300);
-                                }
-                            });
-
-                            portfolioGrid.appendChild(tokenCard);
-                        }
-                    }
-                } catch (e) { }
-            });
-
-            if (count === 0) {
-                portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6;">You haven\'t launched any memes yet. 🚀</div>';
-            }
-        } catch (error) {
-            console.error("Error loading portfolio:", error);
-            portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #ff4d4d;">Error loading portfolio data.</div>';
+            portfolioGrid.appendChild(tokenCard);
         }
     }
 
@@ -735,147 +928,140 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     async function loadMarkets() {
         try {
-            console.log("Fetching launched memes...");
-            const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/${CONTRACT_ADDRESS_V2}/results/logs?order=desc`);
-            if (!response.ok) throw new Error("Failed to fetch logs");
-
-            const data = await response.json();
-            const iface = new Interface(ABI_V2);
-
-            // Clear existing placeholders
+            console.log("Fetching launched memes from Mirror Node...");
             tokensGrid.innerHTML = '';
 
-            if (data.logs.length === 0) {
+            const memejobAccountId = "0.0.5271847"; 
+            const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/tokens?account.id=${memejobAccountId}&limit=20&order=desc`);
+            if (!response.ok) throw new Error("Failed to fetch tokens");
+
+            const data = await response.json();
+
+            if (!data.tokens || data.tokens.length === 0) {
                 tokensGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; opacity: 0.7;">No tokens launched yet. Be the first!</div>';
                 return;
             }
 
-            // Fetch images from Supabase to augment the logs
-            let supabaseImageMap = {};
-            try {
-                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-                const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-                const supabase = createClient(supabaseUrl, supabaseAnonKey);
-                const { data: memetokens } = await supabase.from('meme_tokens').select('token_address, image_url');
-                if (memetokens) {
-                    memetokens.forEach(item => {
-                        if (item.image_url) {
-                            supabaseImageMap[item.token_address.toLowerCase()] = item.image_url;
-                        }
-                    });
-                }
-            } catch (err) {
-                console.warn("Failed to augment with Supabase images", err);
-            }
-
-            data.logs.forEach(log => {
+            // Fetch details to get the IPFS memo
+            const detailedTokens = await Promise.all(data.tokens.map(async (t) => {
                 try {
-                    const parsedLog = iface.parseLog({
-                        data: log.data,
-                        topics: log.topics
-                    });
+                    const detailRes = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/tokens/${t.token_id}`);
+                    if (detailRes.ok) return await detailRes.json();
+                } catch(e) {}
+                return t;
+            }));
 
-                    if (parsedLog.name === 'MemeLaunched') {
-                        const { tokenAddress, name, symbol, imageUrl } = parsedLog.args;
+            detailedTokens.forEach(token => {
+                const parts = token.token_id.split('.');
+                if (parts.length !== 3) return;
+                const tokenAddress = '0x' + parseInt(parts[2]).toString(16).padStart(40, '0');
+                
+                const name = token.name || 'Unknown';
+                const symbol = token.symbol || 'UNK';
+                let memo = token.memo || '';
 
-                        const tokenCard = document.createElement('a');
-                        tokenCard.href = `/coin?address=${tokenAddress}`;
-                        tokenCard.className = 'token-card';
-
-                        // Use stored image or default, checking local cache first
-                        let displayImage = imageUrl && imageUrl.startsWith('http') ? imageUrl : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
-                        const localImage = localStorage.getItem(`meme_image_${tokenAddress.toLowerCase()}`);
-                        const dbImage = supabaseImageMap[tokenAddress.toLowerCase()];
-
-                        if (localImage) {
-                            displayImage = localImage;
-                        } else if (dbImage && (dbImage.startsWith('data:image') || dbImage.startsWith('http'))) {
-                            displayImage = dbImage;
-                        } else if (imageUrl && imageUrl.startsWith('ipfs://') && !imageUrl.includes('bafybeidmeme')) {
-                            displayImage = imageUrl.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
-                        } else if (dbImage && dbImage.startsWith('ipfs://') && !dbImage.includes('bafybeidmeme')) {
-                            displayImage = dbImage.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
-                        }
-
-                        // Fix: Check if symbol already has $
-                        const cleanSymbol = symbol.startsWith('$') ? symbol : `$${symbol}`;
-
-                        tokenCard.innerHTML = `
-                            <div class="card-header">
-                                <div class="token-avatar" style="background: url('${displayImage}') center/cover no-repeat; border-radius: 12px; width: 60px; height: 60px; border: 2px solid rgba(255, 215, 0, 0.2);">
-                                </div>
-                                <div class="token-info">
-                                    <div class="token-name-row">
-                                        <span class="token-name">${name}</span>
-                                        <span class="hot-badge">New</span>
-                                    </div>
-                                    <span class="token-symbol">${cleanSymbol}</span>
-                                </div>
-                            </div>
-                            <div class="card-stats">
-                                <div class="stat-group">
-                                    <span class="stat-label">Address</span>
-                                    <span class="stat-value" style="font-size: 0.7rem; opacity: 0.6;">${tokenAddress.substring(0, 10)}...</span>
-                                </div>
-                                <div class="stat-group">
-                                    <span class="stat-label">Initial Supply</span>
-                                    <span class="stat-value positive">Verified</span>
-                                </div>
-                            </div>
-                        `;
-                        tokensGrid.appendChild(tokenCard);
+                let displayImage = 'https://placehold.co/400x400/1a1a2e/ffd700?text=' + symbol.replace('$', '');
+                const localImage = localStorage.getItem(`meme_image_${tokenAddress.toLowerCase()}`);
+                
+                if (localImage) {
+                    displayImage = localImage;
+                } else {
+                    if (memo.startsWith('ipfs://')) {
+                        displayImage = memo.replace('ipfs://', 'https://ipfs.io/ipfs/');
+                    } else if (memo.startsWith('http')) {
+                        displayImage = memo;
+                    } else if (memo.startsWith('Qm') || memo.startsWith('bafy')) {
+                        displayImage = `https://ipfs.io/ipfs/${memo}`;
                     }
-                } catch (e) { }
+                    displayImage = displayImage.replace('gateway.pinata.cloud', 'ipfs.io');
+                }
+
+                const cleanSymbol = symbol.startsWith('$') ? symbol : `$${symbol}`;
+
+                const tokenCard = document.createElement('a');
+                tokenCard.href = `coin.html?address=${tokenAddress}`;
+                tokenCard.className = 'token-card';
+                tokenCard.innerHTML = `
+                    <div class="card-header">
+                        <div id="avatar-market-${tokenAddress}" class="token-avatar" style="background: url('${displayImage}') center/cover no-repeat; border-radius: 12px; width: 60px; height: 60px; border: 2px solid rgba(255, 215, 0, 0.2);">
+                        </div>
+                        <div class="token-info">
+                            <div class="token-name-row">
+                                <span class="token-name">${name}</span>
+                                <span class="hot-badge">New</span>
+                            </div>
+                            <span class="token-symbol">${cleanSymbol}</span>
+                        </div>
+                    </div>
+                    <div class="card-stats">
+                        <div class="stat-group">
+                            <span class="stat-label">Address</span>
+                            <span class="stat-value" style="font-size: 0.7rem; opacity: 0.6;">${tokenAddress.substring(0, 10)}...</span>
+                        </div>
+                        <div class="stat-group">
+                            <span class="stat-label">Initial Supply</span>
+                            <span class="stat-value positive">Verified</span>
+                        </div>
+                    </div>
+                `;
+                tokensGrid.appendChild(tokenCard);
+                // The image is already set via displayImage.
             });
         } catch (error) {
             console.error("Error loading markets:", error);
             tokensGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #ff4d4d;">Error loading market data.</div>';
         }
-    }
-
-    async function loadLeaderboard() {
+      async function loadLeaderboard() {
         try {
-            const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/${CONTRACT_ADDRESS_V2}/results/logs?order=desc`);
-            if (!response.ok) throw new Error("Failed to fetch logs");
+            const memejobAccountId = "0.0.5271847";
+            const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/tokens?account.id=${memejobAccountId}&limit=50&order=desc`);
+            if (!response.ok) throw new Error("Failed to fetch tokens");
 
             const data = await response.json();
-            const iface = new Interface(ABI_V2);
+            const creators = {}; // Native API doesn't easily expose creator without tx details, mocking for now
+            const memes = [];
 
-            const creators = {}; // { address: count }
-            const memes = [];    // [ { name, symbol, address, imageUrl } ]
+            if (data.tokens) {
+                const detailedTokens = await Promise.all(data.tokens.map(async (t) => {
+                    try {
+                        const detailRes = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/tokens/${t.token_id}`);
+                        if (detailRes.ok) return await detailRes.json();
+                    } catch(e) {}
+                    return t;
+                }));
 
-            // Fetch images from Supabase to augment the logs
-            let supabaseImageMap = {};
-            try {
-                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-                const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-                const supabase = createClient(supabaseUrl, supabaseAnonKey);
-                const { data: memetokens } = await supabase.from('meme_tokens').select('token_address, image_url');
-                if (memetokens) {
-                    memetokens.forEach(item => {
-                        if (item.image_url) {
-                            supabaseImageMap[item.token_address.toLowerCase()] = item.image_url;
+                detailedTokens.forEach(token => {
+                    const parts = token.token_id.split('.');
+                    if (parts.length !== 3) return;
+                    const tokenAddress = '0x' + parseInt(parts[2]).toString(16).padStart(40, '0');
+                    
+                    const name = token.name || 'Unknown';
+                    const symbol = token.symbol || 'UNK';
+                    let memo = token.memo || '';
+
+                    let displayImage = 'https://placehold.co/400x400/1a1a2e/ffd700?text=' + symbol.replace('$', '');
+                    const localImage = localStorage.getItem(`meme_image_${tokenAddress.toLowerCase()}`);
+                    
+                    if (localImage) {
+                        displayImage = localImage;
+                    } else {
+                        if (memo.startsWith('ipfs://')) {
+                            displayImage = memo.replace('ipfs://', 'https://ipfs.io/ipfs/');
+                        } else if (memo.startsWith('http')) {
+                            displayImage = memo;
+                        } else if (memo.startsWith('Qm') || memo.startsWith('bafy')) {
+                            displayImage = `https://ipfs.io/ipfs/${memo}`;
                         }
-                    });
-                }
-            } catch (err) {
-                console.warn("Failed to augment with Supabase images", err);
-            }
-
-            data.logs.forEach(log => {
-                try {
-                    const parsedLog = iface.parseLog({ data: log.data, topics: log.topics });
-                    if (parsedLog.name === 'MemeLaunched') {
-                        const { creator, tokenAddress, name, symbol, imageUrl } = parsedLog.args;
-
-                        // Count for creators
-                        creators[creator] = (creators[creator] || 0) + 1;
-
-                        // Add to memes list
-                        memes.push({ name, symbol, address: tokenAddress, imageUrl });
+                        displayImage = displayImage.replace('gateway.pinata.cloud', 'ipfs.io');
                     }
-                } catch (e) { }
-            });
+                    
+                    memes.push({ name, symbol, address: tokenAddress, imageUrl: displayImage, memo: memo, localImage: localImage });
+                    
+                    // Mocking creators for now
+                    const mockCreator = '0x' + Math.random().toString(16).substring(2, 10) + '...';
+                    creators[mockCreator] = (creators[mockCreator] || 0) + 1;
+                });
+            }
 
             // 1. Render Top Creators
             const sortedCreators = Object.entries(creators)
@@ -883,81 +1069,50 @@ document.addEventListener('DOMContentLoaded', async () => {
                 .slice(0, 10);
 
             topCreatorsList.innerHTML = '';
-            for (let i = 0; i < sortedCreators.length; i++) {
-                const [address, count] = sortedCreators[i];
-                const nativeId = await getHederaNativeId(address) || address.substring(0, 10) + '...';
-
-                const item = document.createElement('div');
-                item.className = `list-item ${i === 0 ? 'highlight-gold' : ''}`;
-                item.innerHTML = `
-                    <div class="item-rank">${i + 1}</div>
-                    <div class="item-avatar"><span style="font-size:1.5rem">👤</span></div>
-                    <div class="item-info">
-                        <div class="item-primary">${nativeId}</div>
-                        <div class="item-secondary">Creator</div>
-                    </div>
-                    <div class="item-stats text-right">
-                        <div class="stat-primary text-gold">${count} Memes</div>
-                        <div class="stat-secondary">Launched</div>
-                    </div>
-                `;
-                topCreatorsList.appendChild(item);
+            if (sortedCreators.length === 0) {
+                topCreatorsList.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No creators found yet.</div>';
+            } else {
+                sortedCreators.forEach(([address, count], index) => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <div class="creator-rank">#${index + 1}</div>
+                        <div class="creator-info">
+                            <span class="creator-address">${address}</span>
+                            <span class="creator-count">${count} Token${count > 1 ? 's' : ''} Launched</span>
+                        </div>
+                    `;
+                    topCreatorsList.appendChild(li);
+                });
             }
 
-            // 2. Render Top Memes (By Holders)
-            topMemesList.innerHTML = '<div style="text-align: center; padding: 40px; opacity: 0.6;">Fetching holder data...</div>';
-
-            // Fetch holder counts in parallel
-            const memeStats = await Promise.all(memes.slice(0, 15).map(async (meme) => {
-                try {
-                    const res = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/tokens/${meme.address}/balances?limit=1`);
-                    const balanceData = await res.json();
-                    return { ...meme, holders: balanceData.balances.length > 0 ? balanceData.balances.length : 0 };
-                } catch (e) {
-                    return { ...meme, holders: 0 };
-                }
-            }));
-
-            const sortedMemes = memeStats.sort((a, b) => b.holders - a.holders).slice(0, 10);
-
+            // 2. Render Top Memes (Latest/Mock Volume)
             topMemesList.innerHTML = '';
-            sortedMemes.forEach((meme, i) => {
-                let displayImage = meme.imageUrl && meme.imageUrl.startsWith('http') ? meme.imageUrl : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
-                const localImage = localStorage.getItem(`meme_image_${meme.address.toLowerCase()}`);
-                const dbImage = supabaseImageMap[meme.address.toLowerCase()];
+            if (memes.length === 0) {
+                topMemesList.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No memes launched yet.</div>';
+            } else {
+                memes.slice(0, 10).forEach((meme, index) => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <div class="meme-rank">#${index + 1}</div>
+                        <div id="avatar-lead-${meme.address}" class="meme-avatar" style="background: url('${meme.imageUrl}') center/cover; border-radius: 8px;"></div>
+                        <div class="meme-info">
+                            <span class="meme-name">${meme.name}</span>
+                            <span class="meme-symbol">${meme.symbol.startsWith('$') ? meme.symbol : '$' + meme.symbol}</span>
+                        </div>
+                        <a href="coin.html?address=${meme.address}" class="view-btn">View</a>
+                    `;
+                    topMemesList.appendChild(li);
 
-                if (localImage) {
-                    displayImage = localImage;
-                } else if (dbImage && (dbImage.startsWith('data:image') || dbImage.startsWith('http'))) {
-                    displayImage = dbImage;
-                } else if (meme.imageUrl && meme.imageUrl.startsWith('ipfs://') && !meme.imageUrl.includes('bafybeidmeme')) {
-                    displayImage = meme.imageUrl.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
-                } else if (dbImage && dbImage.startsWith('ipfs://') && !dbImage.includes('bafybeidmeme')) {
-                    displayImage = dbImage.replace('ipfs://', 'https://gateway.pinata.cloud/ipfs/');
-                }
-
-                const item = document.createElement('div');
-                item.className = `list-item ${i === 0 ? 'highlight-green' : ''}`;
-                item.innerHTML = `
-                    <div class="item-rank">${i + 1}</div>
-                    <div class="item-avatar-square" style="background: url('${displayImage}') center/cover no-repeat; width: 40px; height: 40px; border-radius: 8px;"></div>
-                    <div class="item-info">
-                        <div class="item-primary">${meme.name}</div>
-                        <div class="item-secondary">${meme.symbol}</div>
-                    </div>
-                    <div class="item-stats text-right">
-                        <div class="stat-primary text-green">${meme.holders} Holders</div>
-                        <div class="stat-secondary">Live Data</div>
-                    </div>
-                `;
-                topMemesList.appendChild(item);
-            });
+                // The image is already set via meme.imageUrl
+                });
+            }
 
         } catch (error) {
             console.error("Error loading leaderboard:", error);
-            topCreatorsList.innerHTML = '<div style="color: #ff4d4d; padding: 20px;">Error loading data.</div>';
-            topMemesList.innerHTML = '<div style="color: #ff4d4d; padding: 20px;">Error loading data.</div>';
+            if (topCreatorsList) topCreatorsList.innerHTML = '<div style="color: #ff4d4d; text-align: center; padding: 20px;">Error loading data</div>';
+            if (topMemesList) topMemesList.innerHTML = '<div style="color: #ff4d4d; text-align: center; padding: 20px;">Error loading data</div>';
         }
+    }
     }
 
 
