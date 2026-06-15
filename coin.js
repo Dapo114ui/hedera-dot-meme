@@ -1,5 +1,8 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { createClient } from '@supabase/supabase-js';
 import { ethers, Interface } from 'ethers';
+import { ContractId } from '@hashgraph/sdk';
+import { CONTRACT_DEPLOYMENTS, createAdapter, getChain, MJClient, EvmAdapter } from '@buidlerlabs/memejob-sdk-js';
+
 
 document.addEventListener('DOMContentLoaded', async () => {
     // 1. Get Token Address from URL
@@ -370,24 +373,43 @@ function setupTradeInterface(tokenAddress) {
         try {
             const ethProvider = new ethers.BrowserProvider(window.ethereum);
             const signer = await ethProvider.getSigner();
-            const router = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, signer);
-            const amountIn = ethers.parseUnits(amount.toString(), 8);
-            
-            const slippageFactor = 10000n - BigInt(Math.floor(currentSlippage * 10000));
+
+            // Set up MemeJob Client
+            const chain = getChain('testnet');
+            const adapter = createAdapter(EvmAdapter, {
+                ethereumProvider: window.ethereum
+            });
+            const client = new MJClient(adapter, {
+                chain: chain,
+                contractId: ContractId.fromEvmAddress(0, 0, CONTRACT_DEPLOYMENTS.testnet.evmAddress),
+            });
+
+            // Need to pass the native HTS address if tokenAddress is EVM
+            let targetAddress = tokenAddress;
+            if (targetAddress.startsWith('0x')) {
+                const hexNum = targetAddress.substring(26);
+                const accountNum = parseInt(hexNum, 16);
+                targetAddress = `0.0.${accountNum}`;
+            }
+
+            console.log("Getting token instance from SDK...");
+            const mjToken = await client.getToken(targetAddress);
+
+            const amountIn = ethers.parseUnits(amount.toString(), 8); // Always 8 decimals for Hedera native
 
             if (currentMode === 'buy') {
-                const amountOut = await routerContract.getAmountOut(tokenAddress, amountIn, 0);
-                const amountOutMin = (amountOut * slippageFactor) / 10000n;
-                const tx = await router.buyJob(tokenAddress, amountOutMin, ethers.ZeroAddress, { value: amountIn });
-                await tx.wait();
+                console.log("Buying via SDK with amount:", amountIn.toString());
+                const result = await mjToken.buy({
+                    amount: amountIn
+                });
+                console.log("Buy result:", result);
             } else {
-                const erc20ABI = ["function approve(address spender, uint256 amount) external returns (bool)"];
-                const tokenContract = new ethers.Contract(tokenAddress, erc20ABI, signer);
-                const approveTx = await tokenContract.approve(ROUTER_ADDRESS, amountIn);
-                await approveTx.wait();
-
-                const tx = await router.sellJob(tokenAddress, amountIn);
-                await tx.wait();
+                console.log("Selling via SDK with amount:", amountIn.toString());
+                const result = await mjToken.sell({
+                    amount: amountIn,
+                    instant: true
+                });
+                console.log("Sell result:", result);
             }
            
             alert(`SUCCESS! Successfully ${currentMode === 'buy' ? 'bought' : 'sold'} tokens.`);
@@ -397,7 +419,7 @@ function setupTradeInterface(tokenAddress) {
 
         } catch (error) {
             console.error(error);
-            alert("Transaction failed: " + error.message);
+            alert("Transaction failed: " + (error.message || error));
         } finally {
             tradeSubmitBtn.textContent = currentMode === 'buy' ? 'Buy Token' : 'Sell Token';
             tradeSubmitBtn.disabled = false;

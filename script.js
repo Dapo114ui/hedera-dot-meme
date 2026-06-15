@@ -214,6 +214,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 address = appkit.getAddress ? appkit.getAddress() : null;
             }
 
+            if (!isConnected && window.ethereum && window.ethereum.selectedAddress) {
+                isConnected = true;
+                address = window.ethereum.selectedAddress;
+            }
+
+
             if (address) {
                 // Forcefully strip CAIP-10 prefixes via Regex
                 address = address.replace(/eip155:/gi, '').replace(/hedera:/gi, '').replace(/testnet:/gi, '').replace(/mainnet:/gi, '');
