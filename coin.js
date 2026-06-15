@@ -371,6 +371,8 @@ function setupTradeInterface(tokenAddress) {
         tradeSubmitBtn.disabled = true;
 
         try {
+            if (window.ensureHederaTestnet) await window.ensureHederaTestnet();
+
             const ethProvider = new ethers.BrowserProvider(window.ethereum);
             const signer = await ethProvider.getSigner();
 

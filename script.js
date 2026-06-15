@@ -419,10 +419,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             btn.innerHTML = `<span>Approving Meme Launch...</span>`;
 
+            if (window.ensureHederaTestnet) await window.ensureHederaTestnet();
+
             // Setup MJClient
             const chain = getChain('testnet');
             const adapter = createAdapter(EvmAdapter, {
-                ethereumProvider: universalProvider
+                ethereumProvider: window.ethereum // universalProvider might not correctly map chain id in all cases
             });
             const client = new MJClient(adapter, {
                 chain: chain,
@@ -1121,14 +1123,48 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     }
 
-
-
     const secondaryBtn = document.querySelector('.secondary-btn');
     if (secondaryBtn) {
         secondaryBtn.addEventListener('click', () => {
             window.location.href = 'launch.html';
         });
     }
+
+    // Helper to ensure MetaMask is on Hedera Testnet
+    window.ensureHederaTestnet = async function() {
+        if (!window.ethereum) return;
+        const targetChainId = '0x128'; // 296
+        const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
+        if (currentChainId !== targetChainId) {
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: targetChainId }],
+                });
+            } catch (switchError) {
+                if (switchError.code === 4902) {
+                    try {
+                        await window.ethereum.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [
+                                {
+                                    chainId: targetChainId,
+                                    chainName: 'Hedera Testnet',
+                                    nativeCurrency: { name: 'HBAR', symbol: 'HBAR', decimals: 18 },
+                                    rpcUrls: ['https://testnet.hashio.io/api'],
+                                    blockExplorerUrls: ['https://hashscan.io/testnet/'],
+                                },
+                            ],
+                        });
+                    } catch (addError) {
+                        throw new Error("Failed to add Hedera Testnet to wallet");
+                    }
+                } else {
+                    throw new Error("Please switch to Hedera Testnet in your wallet");
+                }
+            }
+        }
+    };
 
     // Dropdown Logic
     const tradeDropdownBtn = document.getElementById('tradeDropdownBtn');
