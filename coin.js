@@ -356,7 +356,8 @@ function setupTradeInterface(tokenAddress) {
     };
 
     tradeSubmitBtn.onclick = async () => {
-        if (!window.ethereum) {
+        const universalProvider = typeof window.getUniversalProvider === 'function' ? await window.getUniversalProvider() : window.ethereum;
+        if (!universalProvider) {
             alert("Please connect a wallet!");
             return;
         }
@@ -373,13 +374,10 @@ function setupTradeInterface(tokenAddress) {
         try {
             if (window.ensureHederaTestnet) await window.ensureHederaTestnet();
 
-            const ethProvider = new ethers.BrowserProvider(window.ethereum);
-            const signer = await ethProvider.getSigner();
-
             // Set up MemeJob Client
             const chain = getChain('testnet');
             const adapter = createAdapter(EvmAdapter, {
-                ethereumProvider: window.ethereum
+                ethereumProvider: universalProvider || window.ethereum
             });
             const client = new MJClient(adapter, {
                 chain: chain,
