@@ -423,8 +423,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Setup MJClient
             const chain = getChain('testnet');
+            const universalProvider = await window.getUniversalProvider();
             const adapter = createAdapter(EvmAdapter, {
-                ethereumProvider: window.ethereum // universalProvider might not correctly map chain id in all cases
+                ethereumProvider: universalProvider || window.ethereum
             });
             const client = new MJClient(adapter, {
                 chain: chain,
@@ -1130,21 +1131,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // Helper to ensure MetaMask is on Hedera Testnet
+    // Helper to ensure wallet is on Hedera Testnet
     window.ensureHederaTestnet = async function() {
-        if (!window.ethereum) return;
+        const provider = typeof window.getUniversalProvider === 'function' ? await window.getUniversalProvider() : window.ethereum;
+        if (!provider) return;
+
         const targetChainId = '0x128'; // 296
-        const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
+        const currentChainId = await provider.request({ method: 'eth_chainId' });
         if (currentChainId !== targetChainId) {
             try {
-                await window.ethereum.request({
+                await provider.request({
                     method: 'wallet_switchEthereumChain',
                     params: [{ chainId: targetChainId }],
                 });
             } catch (switchError) {
                 if (switchError.code === 4902) {
                     try {
-                        await window.ethereum.request({
+                        await provider.request({
                             method: 'wallet_addEthereumChain',
                             params: [
                                 {
