@@ -14,3 +14,4 @@ cache/
 
 # Archived pre-memejob-SDK contracts/scripts (not used by the live app)
 archive/
+.env*
