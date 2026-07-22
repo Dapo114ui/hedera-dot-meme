@@ -14,7 +14,7 @@ import {
 import { formatUnits } from 'ethers';
 import { appkit } from './wallet.js';
 import { CONTRACT_DEPLOYMENTS, createAdapter, getChain, MJClient, EvmAdapter } from "@buidlerlabs/memejob-sdk-js";
-import { evmAddressToHederaId } from './mirror-trades.js';
+import { evmAddressToHederaId, fetchTopTokensByVolume } from './mirror-trades.js';
 
 let selectedMemeFile = null;
 
@@ -963,6 +963,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 const cleanSymbol = symbol.startsWith('$') ? symbol : `$${symbol}`;
 
+                const createdMs = parseFloat(token.created_timestamp) * 1000;
+                const isNew = createdMs && (Date.now() - createdMs) < (24 * 60 * 60 * 1000);
+                const newBadgeHtml = isNew ? `<span class="hot-badge">New</span>` : '';
+
+                const supplyDisplay = token.total_supply
+                    ? Math.floor(Number(token.total_supply) / 1e8).toLocaleString()
+                    : 'Unknown';
+
                 const tokenCard = document.createElement('a');
                 tokenCard.href = `coin.html?address=${tokenAddress}`;
                 tokenCard.className = 'token-card';
@@ -973,7 +981,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <div class="token-info">
                             <div class="token-name-row">
                                 <span class="token-name">${name}</span>
-                                <span class="hot-badge">New</span>
+                                ${newBadgeHtml}
                             </div>
                             <span class="token-symbol">${cleanSymbol}</span>
                         </div>
@@ -985,7 +993,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </div>
                         <div class="stat-group">
                             <span class="stat-label">Initial Supply</span>
-                            <span class="stat-value positive">Verified</span>
+                            <span class="stat-value positive">${supplyDisplay}</span>
                         </div>
                     </div>
                 `;
@@ -1000,58 +1008,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function loadLeaderboard() {
         try {
-            const memejobAccountId = "0.0.5271847";
-            const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/tokens?account.id=${memejobAccountId}&limit=50&order=desc`);
-            if (!response.ok) throw new Error("Failed to fetch tokens");
+            const { data: allTokens, error } = await supabase.from('meme_tokens').select('*');
+            if (error) throw error;
 
-            const data = await response.json();
-            const creators = {}; // Native API doesn't easily expose creator without tx details, mocking for now
-            const memes = [];
-
-            if (data.tokens) {
-                const detailedTokens = await Promise.all(data.tokens.map(async (t) => {
-                    try {
-                        const detailRes = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/tokens/${t.token_id}`);
-                        if (detailRes.ok) return await detailRes.json();
-                    } catch(e) {}
-                    return t;
-                }));
-
-                detailedTokens.forEach(token => {
-                    const parts = token.token_id.split('.');
-                    if (parts.length !== 3) return;
-                    const tokenAddress = '0x' + parseInt(parts[2]).toString(16).padStart(40, '0');
-                    
-                    const name = token.name || 'Unknown';
-                    const symbol = token.symbol || 'UNK';
-                    let memo = token.memo || '';
-
-                    let displayImage = 'https://placehold.co/400x400/1a1a2e/ffd700?text=' + symbol.replace('$', '');
-                    const localImage = localStorage.getItem(`meme_image_${tokenAddress.toLowerCase()}`);
-                    
-                    if (localImage) {
-                        displayImage = localImage;
-                    } else {
-                        if (memo.startsWith('ipfs://')) {
-                            displayImage = memo.replace('ipfs://', 'https://ipfs.io/ipfs/');
-                        } else if (memo.startsWith('http')) {
-                            displayImage = memo;
-                        } else if (memo.startsWith('Qm') || memo.startsWith('bafy')) {
-                            displayImage = `https://ipfs.io/ipfs/${memo}`;
-                        }
-                        displayImage = displayImage.replace('gateway.pinata.cloud', 'ipfs.io');
-                    }
-                    
-                    memes.push({ name, symbol, address: tokenAddress, imageUrl: displayImage, memo: memo, localImage: localImage });
-                    
-                    // Mocking creators for now
-                    const mockCreator = '0x' + Math.random().toString(16).substring(2, 10) + '...';
-                    creators[mockCreator] = (creators[mockCreator] || 0) + 1;
-                });
-            }
-
-            // 1. Render Top Creators
-            const sortedCreators = Object.entries(creators)
+            // 1. Top Creators - real counts from our own launch records
+            const creatorCounts = {};
+            (allTokens || []).forEach(t => {
+                if (!t.creator_address) return;
+                creatorCounts[t.creator_address] = (creatorCounts[t.creator_address] || 0) + 1;
+            });
+            const sortedCreators = Object.entries(creatorCounts)
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 10);
 
@@ -1060,11 +1026,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 topCreatorsList.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No creators found yet.</div>';
             } else {
                 sortedCreators.forEach(([address, count], index) => {
+                    const truncated = address.substring(0, 6) + '...' + address.substring(address.length - 4);
                     const li = document.createElement('li');
                     li.innerHTML = `
                         <div class="creator-rank">#${index + 1}</div>
                         <div class="creator-info">
-                            <span class="creator-address">${address}</span>
+                            <span class="creator-address">${truncated}</span>
                             <span class="creator-count">${count} Token${count > 1 ? 's' : ''} Launched</span>
                         </div>
                     `;
@@ -1072,28 +1039,45 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
             }
 
-            // 2. Render Top Memes (Latest/Mock Volume)
+            // 2. Top Memes - ranked by real HBAR trade volume, not recency
+            topMemesList.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.6;">Loading trade volume...</div>';
+            const tokenByAddress = new Map((allTokens || []).map(t => [t.token_address.toLowerCase(), t]));
+            const volumeRanked = await fetchTopTokensByVolume();
+            const rankedMemes = volumeRanked
+                .map(v => ({ ...v, token: tokenByAddress.get(v.tokenAddress) }))
+                .filter(v => v.token)
+                .slice(0, 10);
+
             topMemesList.innerHTML = '';
-            if (memes.length === 0) {
-                topMemesList.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No memes launched yet.</div>';
+            if (rankedMemes.length === 0) {
+                topMemesList.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No trading activity yet.</div>';
             } else {
-                memes.slice(0, 10).forEach((meme, index) => {
+                rankedMemes.forEach(({ token, hbarTinybars }, index) => {
+                    let displayImage = token.image_url && token.image_url.startsWith('http') ? token.image_url : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
+                    const localImage = localStorage.getItem(`meme_image_${token.token_address.toLowerCase()}`);
+                    if (localImage) {
+                        displayImage = localImage;
+                    } else if (token.image_url && token.image_url.startsWith('ipfs://') && !token.image_url.includes('bafybeidmeme')) {
+                        displayImage = token.image_url.replace('ipfs://', 'https://ipfs.io/ipfs/');
+                    }
+                    displayImage = displayImage.replace('gateway.pinata.cloud', 'ipfs.io');
+
+                    const volumeHbar = (Number(hbarTinybars) / 1e8).toLocaleString(undefined, { maximumFractionDigits: 2 });
+                    const symbol = token.symbol.startsWith('$') ? token.symbol : `$${token.symbol}`;
+
                     const li = document.createElement('li');
                     li.innerHTML = `
                         <div class="meme-rank">#${index + 1}</div>
-                        <div id="avatar-lead-${meme.address}" class="meme-avatar" style="background: url('${meme.imageUrl}') center/cover; border-radius: 8px;"></div>
+                        <div class="meme-avatar" style="background: url('${displayImage}') center/cover; border-radius: 8px;"></div>
                         <div class="meme-info">
-                            <span class="meme-name">${meme.name}</span>
-                            <span class="meme-symbol">${meme.symbol.startsWith('$') ? meme.symbol : '$' + meme.symbol}</span>
+                            <span class="meme-name">${token.name}</span>
+                            <span class="meme-symbol">${symbol} &middot; ${volumeHbar} ℏ volume</span>
                         </div>
-                        <a href="coin.html?address=${meme.address}" class="view-btn">View</a>
+                        <a href="coin.html?address=${token.token_address}" class="view-btn">View</a>
                     `;
                     topMemesList.appendChild(li);
-
-                // The image is already set via meme.imageUrl
                 });
             }
-
         } catch (error) {
             console.error("Error loading leaderboard:", error);
             if (topCreatorsList) topCreatorsList.innerHTML = '<div style="color: #ff4d4d; text-align: center; padding: 20px;">Error loading data</div>';

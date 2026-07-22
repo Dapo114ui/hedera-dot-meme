@@ -10,7 +10,6 @@ const TRADE_EVENTS_ABI = [
 const tradeEventsInterface = new Interface(TRADE_EVENTS_ABI);
 
 const MAX_PAGES = 15;
-const MAX_TRADES = 300;
 
 export function evmAddressToHederaId(address) {
     if (!address.startsWith('0x')) return address;
@@ -22,14 +21,14 @@ export function evmAddressToHederaId(address) {
  * Mirror node requires a bounded timestamp range for topic-filtered log
  * queries, and the memejob contract is shared across every token on the
  * platform, so instead of filtering server-side we page through the
- * contract's logs newest-first and keep only the ones for this token.
+ * contract's logs newest-first (capped at MAX_PAGES) and decode
+ * everything - callers filter/aggregate as needed.
  */
-export async function fetchTokenTrades(tokenEvmAddress) {
-    const targetAddress = tokenEvmAddress.toLowerCase();
-    const trades = [];
+async function scanRecentTradeLogs(maxPages = MAX_PAGES) {
+    const decoded = [];
     let url = `${MIRROR_BASE}/api/v1/contracts/${CONTRACT_ADDRESS}/results/logs?order=desc&limit=100`;
 
-    for (let page = 0; page < MAX_PAGES && url && trades.length < MAX_TRADES; page++) {
+    for (let page = 0; page < maxPages && url; page++) {
         const res = await fetch(url);
         if (!res.ok) break;
         const data = await res.json();
@@ -41,10 +40,11 @@ export async function fetchTokenTrades(tokenEvmAddress) {
             } catch {
                 continue;
             }
-            if (!parsed || parsed.args.tokenAddress.toLowerCase() !== targetAddress) continue;
+            if (!parsed) continue;
 
             const isBuy = parsed.name === 'TokensBought';
-            trades.push({
+            decoded.push({
+                tokenAddress: parsed.args.tokenAddress.toLowerCase(),
                 type: isBuy ? 'buy' : 'sell',
                 trader: isBuy ? parsed.args.buyer : parsed.args.seller,
                 tokenAmount: parsed.args.amount,
@@ -56,8 +56,30 @@ export async function fetchTokenTrades(tokenEvmAddress) {
         url = data.links?.next ? MIRROR_BASE + data.links.next : null;
     }
 
+    return decoded;
+}
+
+export async function fetchTokenTrades(tokenEvmAddress) {
+    const targetAddress = tokenEvmAddress.toLowerCase();
+    const all = await scanRecentTradeLogs();
+    const trades = all.filter(t => t.tokenAddress === targetAddress);
     trades.sort((a, b) => a.timestamp - b.timestamp);
     return trades;
+}
+
+// Tallies real HBAR trade volume per token from the same shared-contract
+// log scan, so "top tokens" can be ranked by actual activity instead of
+// just recency.
+export async function fetchTopTokensByVolume() {
+    const all = await scanRecentTradeLogs();
+    const volumeByToken = new Map();
+    for (const t of all) {
+        const prev = volumeByToken.get(t.tokenAddress) || 0n;
+        volumeByToken.set(t.tokenAddress, prev + t.hbarTinybars);
+    }
+    return Array.from(volumeByToken.entries())
+        .map(([tokenAddress, hbarTinybars]) => ({ tokenAddress, hbarTinybars }))
+        .sort((a, b) => (a.hbarTinybars < b.hbarTinybars ? 1 : a.hbarTinybars > b.hbarTinybars ? -1 : 0));
 }
 
 export async function fetchTokenHolders(hederaTokenId) {
