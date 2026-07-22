@@ -1,7 +1,8 @@
 import { supabase } from './supabase.js';
-import { ethers, Interface } from 'ethers';
+import { ethers } from 'ethers';
 import { ContractId } from '@hashgraph/sdk';
 import { CONTRACT_DEPLOYMENTS, createAdapter, getChain, MJClient, EvmAdapter } from '@buidlerlabs/memejob-sdk-js';
+import { evmAddressToHederaId, fetchTokenTrades, fetchTokenHolders } from './mirror-trades.js';
 
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -35,12 +36,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!tokenData) {
             console.warn("Token not found in Supabase. Falling back to Hedera Mirror Node...");
             try {
-                let hederaId = tokenAddress;
-                if (tokenAddress.startsWith('0x')) {
-                    const hexNum = tokenAddress.substring(26);
-                    const accountNum = parseInt(hexNum, 16);
-                    hederaId = `0.0.${accountNum}`;
-                }
+                const hederaId = evmAddressToHederaId(tokenAddress);
                 const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/tokens/${hederaId}`);
                 if (response.ok) {
                     const tokenInfo = await response.json();
@@ -106,11 +102,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('coin-loader').style.display = 'none';
         document.getElementById('coin-content').style.display = 'block';
 
-        // 4. Initialize Lightweight Charts with Dummy Data
-        initChart();
-        
-        // 5. Populate Dummy Tables
-        populateDummyTables();
+        // 4. Load real trade history from mirror node logs, then render
+        // the chart and the trades table from the same data.
+        try {
+            const trades = await fetchTokenTrades(tokenAddress);
+            initChart(trades);
+            renderTradesTable(trades);
+        } catch (e) {
+            console.error("Failed to load trade history:", e);
+            initChart([]);
+            renderTradesTable([]);
+        }
+
+        // 5. Load real holder distribution from mirror node
+        try {
+            const holders = await fetchTokenHolders(evmAddressToHederaId(tokenAddress));
+            renderHoldersTable(holders);
+        } catch (e) {
+            console.error("Failed to load holders:", e);
+            renderHoldersTable([]);
+        }
 
         // 6. Setup Trading Logic
         setupTradeInterface(tokenAddress);
@@ -128,7 +139,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-function initChart() {
+// Buckets trades into hourly OHLC candles. Price is HBAR per token,
+// derived directly from each trade's totalPrice/amount ratio (both use
+// the same 8-decimal scaling, so it cancels out of the division).
+function buildCandles(trades) {
+    const bucketSeconds = 3600;
+    const buckets = new Map();
+
+    for (const trade of trades) {
+        const price = Number(trade.hbarTinybars) / Number(trade.tokenAmount);
+        const bucketTime = Math.floor(trade.timestamp / bucketSeconds) * bucketSeconds;
+        const existing = buckets.get(bucketTime);
+        if (!existing) {
+            buckets.set(bucketTime, { time: bucketTime, open: price, high: price, low: price, close: price });
+        } else {
+            existing.high = Math.max(existing.high, price);
+            existing.low = Math.min(existing.low, price);
+            existing.close = price;
+        }
+    }
+
+    return Array.from(buckets.values()).sort((a, b) => a.time - b.time);
+}
+
+function initChart(trades) {
     const chartContainer = document.getElementById('tvchart-container');
     const chart = LightweightCharts.createChart(chartContainer, {
         layout: {
@@ -157,24 +191,17 @@ function initChart() {
         wickDownColor: '#ef5350',
     });
 
-    // Generate some dummy candlestick data
-    const data = [];
-    let currentPrice = 0.00000077;
-    let time = Math.floor(Date.now() / 1000) - (86400 * 30); // 30 days ago
-
-    for (let i = 0; i < 100; i++) {
-        time += 86400; // +1 day
-        const open = currentPrice;
-        const close = currentPrice * (1 + (Math.random() - 0.45) * 0.1); // slight upward bias
-        const high = Math.max(open, close) * (1 + Math.random() * 0.05);
-        const low = Math.min(open, close) * (1 - Math.random() * 0.05);
-        
-        data.push({ time, open, high, low, close });
-        currentPrice = close;
+    const data = buildCandles(trades);
+    if (data.length > 0) {
+        candlestickSeries.setData(data);
+    } else {
+        chartContainer.style.position = 'relative';
+        const emptyMsg = document.createElement('div');
+        emptyMsg.textContent = 'No trades yet';
+        emptyMsg.style.cssText = 'position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#94a3b8; pointer-events:none;';
+        chartContainer.appendChild(emptyMsg);
     }
 
-    candlestickSeries.setData(data);
-    
     // Handle resize
     new ResizeObserver(entries => {
         if (entries.length === 0 || entries[0].target !== chartContainer) { return; }
@@ -183,36 +210,59 @@ function initChart() {
     }).observe(chartContainer);
 }
 
-function populateDummyTables() {
-    // Transactions
+function timeAgo(timestampSeconds) {
+    const diffMs = Date.now() - timestampSeconds * 1000;
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins} min${mins === 1 ? '' : 's'} ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+    const days = Math.floor(hours / 24);
+    return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+
+function renderTradesTable(trades) {
     const txBody = document.getElementById('tx-tbody');
-    for (let i = 0; i < 10; i++) {
-        const isBuy = Math.random() > 0.5;
-        const amount = (Math.random() * 100).toFixed(2);
+    txBody.innerHTML = '';
+
+    if (trades.length === 0) {
+        txBody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#94a3b8;">No trades yet</td></tr>';
+        return;
+    }
+
+    const recent = [...trades].sort((a, b) => b.timestamp - a.timestamp).slice(0, 20);
+    for (const trade of recent) {
+        const hbarAmount = (Number(trade.hbarTinybars) / 1e8).toFixed(2);
+        const isBuy = trade.type === 'buy';
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td style="font-family: monospace;">0x${Math.random().toString(16).substr(2,6)}...</td>
+            <td style="font-family: monospace;">${trade.trader.slice(0, 6)}...${trade.trader.slice(-4)}</td>
             <td><span class="${isBuy ? 'type-buy' : 'type-sell'}">${isBuy ? 'BUY' : 'SELL'}</span></td>
-            <td>${amount} HBAR</td>
-            <td style="color: #94a3b8;">${Math.floor(Math.random() * 60)} mins ago</td>
+            <td>${hbarAmount} HBAR</td>
+            <td style="color: #94a3b8;">${timeAgo(trade.timestamp)}</td>
         `;
         txBody.appendChild(tr);
     }
+}
 
-    // Holders
+function renderHoldersTable(holders) {
     const holdersBody = document.getElementById('holders-tbody');
-    let totalPct = 100;
-    for (let i = 1; i <= 10; i++) {
-        const pct = i === 1 ? 45.2 : (Math.random() * (totalPct / i)).toFixed(2);
-        totalPct -= pct;
+    holdersBody.innerHTML = '';
+
+    if (holders.length === 0) {
+        holdersBody.innerHTML = '<tr><td colspan="3" style="text-align:center; color:#94a3b8;">No holders yet</td></tr>';
+        return;
+    }
+
+    holders.forEach((holder, i) => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td style="color: #94a3b8;">#${i}</td>
-            <td style="font-family: monospace;">0x${Math.random().toString(16).substr(2,6)}...</td>
-            <td>${pct}%</td>
+            <td style="color: #94a3b8;">#${i + 1}</td>
+            <td style="font-family: monospace;">${holder.account}</td>
+            <td>${holder.percent.toFixed(2)}%</td>
         `;
         holdersBody.appendChild(tr);
-    }
+    });
 }
 
 function setupTradeInterface(tokenAddress) {
@@ -375,12 +425,7 @@ function setupTradeInterface(tokenAddress) {
             });
 
             // Need to pass the native HTS address if tokenAddress is EVM
-            let targetAddress = tokenAddress;
-            if (targetAddress.startsWith('0x')) {
-                const hexNum = targetAddress.substring(26);
-                const accountNum = parseInt(hexNum, 16);
-                targetAddress = `0.0.${accountNum}`;
-            }
+            const targetAddress = evmAddressToHederaId(tokenAddress);
 
             console.log("Getting token instance from SDK...");
             const mjToken = await client.getToken(targetAddress);
