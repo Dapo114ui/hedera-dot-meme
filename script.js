@@ -350,56 +350,75 @@ document.addEventListener('DOMContentLoaded', async () => {
             const telegram = document.getElementById('socialTelegram')?.value || "";
             const website = document.getElementById('socialWebsite')?.value || "";
             
-            let memo = `ipfs://bafybeidmeme${Math.random().toString(36).substring(7)}`;
-            let finalDbImageUrl = memo;
-            
+            let memo = '';
+            let finalDbImageUrl = '';
+            let imageUri = null; // real ipfs:// image URI, only set if the image pin succeeded
+            let ipfsPinSucceeded = false; // whether the JSON metadata (the on-chain memo) is real
+
             if (selectedMemeFile) {
-                btn.innerHTML = `<span>Uploading Metadata...</span>`;
+                btn.innerHTML = `<span>Uploading Image...</span>`;
                 const formData = new FormData();
                 formData.append('file', selectedMemeFile);
                 try {
-                    // 1. Upload Image (via serverless proxy so the Pinata JWT never reaches the browser)
+                    // Upload Image (via serverless proxy so the Pinata JWT never reaches the browser)
                     const imgRes = await fetch('/api/pinata-upload', {
                         method: 'POST',
                         body: formData
                     });
                     const imgData = await imgRes.json();
                     if (imgData?.IpfsHash) {
-                        const imageUri = `ipfs://${imgData.IpfsHash}`;
+                        imageUri = `ipfs://${imgData.IpfsHash}`;
                         finalDbImageUrl = `https://ipfs.io/ipfs/${imgData.IpfsHash}`;
-
-                        const jsonMetadata = {
-                            name: name,
-                            description: desc,
-                            image: imageUri,
-                            properties: {
-                                twitter: twitter,
-                                telegram: telegram,
-                                website: website
-                            }
-                        };
-
-                        const jsonRes = await fetch('/api/pinata-metadata', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                pinataContent: jsonMetadata,
-                                pinataMetadata: { name: `${symbol}_metadata.json` }
-                            })
-                        });
-                        const jsonData = await jsonRes.json();
-                        if (jsonData?.IpfsHash) {
-                            memo = `ipfs://${jsonData.IpfsHash}`;
-                        } else {
-                            memo = finalDbImageUrl; // Fallback to just image
-                        }
                     } else {
-                        console.warn("Pinata upload failed silently (no hash). Falling back to default.");
+                        console.warn("Pinata image upload failed (no hash returned).");
                     }
                 } catch (err) {
                     console.error("Pinata image upload failed:", err);
                 }
             }
+
+            // Always attempt to pin JSON metadata (with or without an image) -
+            // this becomes the on-chain memo, so it needs to be real content,
+            // not a fake placeholder.
+            btn.innerHTML = `<span>Uploading Metadata...</span>`;
+            try {
+                const jsonMetadata = {
+                    name: name,
+                    description: desc,
+                    image: imageUri || undefined,
+                    properties: {
+                        twitter: twitter,
+                        telegram: telegram,
+                        website: website
+                    }
+                };
+
+                const jsonRes = await fetch('/api/pinata-metadata', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        pinataContent: jsonMetadata,
+                        pinataMetadata: { name: `${symbol}_metadata.json` }
+                    })
+                });
+                const jsonData = await jsonRes.json();
+                if (jsonData?.IpfsHash) {
+                    memo = `ipfs://${jsonData.IpfsHash}`;
+                    ipfsPinSucceeded = true;
+                } else {
+                    console.warn("Pinata metadata upload failed (no hash returned).");
+                }
+            } catch (err) {
+                console.error("Pinata metadata upload failed:", err);
+            }
+
+            if (!ipfsPinSucceeded) {
+                // Honest, short fallback. Hedera memos are capped at 100 bytes,
+                // and this deliberately does NOT look like a real IPFS pointer.
+                const fallback = (desc || name || symbol || 'Meme token').trim();
+                memo = fallback.length > 90 ? fallback.slice(0, 90) : fallback;
+            }
+
             btn.innerHTML = `<span>Approving Meme Launch...</span>`;
 
             if (window.ensureHederaTestnet) await window.ensureHederaTestnet();
@@ -473,9 +492,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                         localStorage.setItem(`meme_image_${newTokenAddress.toLowerCase()}`, dataUrl);
                     } catch(err) { console.warn("localStorage full"); }
                     
-                    // If the memo is our fake IPFS hash (because Pinata failed), 
-                    // use the Base64 image directly for Supabase so other users can see it!
-                    if (finalDbImageUrl.includes('bafybeidmeme') || finalDbImageUrl.startsWith('ipfs://')) {
+                    // If the image itself didn't pin to IPFS, use the compressed
+                    // Base64 copy for Supabase so the token's image still displays.
+                    if (!imageUri) {
                         finalDbImageUrl = dataUrl;
                     }
                 } catch(e) {
@@ -514,6 +533,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 // 2. Ensure the modal actually exists in the DOM before manipulating it
                 if (successModal) {
+                    const modalText = document.getElementById('modalText');
+                    if (modalText) {
+                        if (ipfsPinSucceeded) {
+                            modalText.textContent = 'Your meme token is now live on Hedera and securely pinned to IPFS.';
+                        } else {
+                            modalText.textContent = "Your meme token is now live on Hedera. Your metadata couldn't be pinned to IPFS right now, but your token details are saved and will still display in the app.";
+                        }
+                    }
+
                     successModal.classList.add('active');
 
                     viewMarketBtn.onclick = () => { window.location.href = 'markets.html'; };
