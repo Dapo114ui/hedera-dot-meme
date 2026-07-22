@@ -1,6 +1,6 @@
 import { Buffer } from 'buffer';
-import { createClient } from '@supabase/supabase-js';
-import { 
+import { supabase } from './supabase.js';
+import {
     TokenCreateTransaction, 
     TransferTransaction, 
     Hbar, 
@@ -26,11 +26,6 @@ window.onerror = function(msg, url, line, col, error) {
 // Global check for debugging
 console.log("Hedera dot meme script v6.0 (Pure ERC20 Contract) loaded!");
 
-const CONTRACT_ADDRESS_V2 = "0x1601d39146bfcA0745376c394EAa270cb841662C"; // TokenFactoryHTS
-const ABI_V2 = [
-    "function createToken(string name, string symbol, string memo, int64 initialSupply) payable returns (address, address)",
-    "event TokenCreated(address indexed tokenAddress, address indexed liquidityPool, string name, string symbol, string memo)"
-];
 document.addEventListener('DOMContentLoaded', async () => {
 
     // Helper: Bytes to Base64
@@ -343,15 +338,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             btn.innerHTML = `<span>Preparing Launch...</span>`;
 
         try {
-            let universalProvider = null;
-            if (appkit && typeof appkit.getProvider === 'function') {
-                universalProvider = appkit.getProvider('eip155') || appkit.getProvider('hedera');
-            }
-            if (!universalProvider) {
-                universalProvider = await getProvider(); // Fallback to our custom EIP-6963 / Window provider
-            }
-            if (!universalProvider) throw new Error("Wallet provider not initialized or not found.");
-
             console.log("CRITICAL: Executing Native Launch via UniversalProvider v5.0", currentUserNative);
             const name = document.getElementById('tokenName')?.value || "My Awesome Meme";
             const symbol = document.getElementById('ticker')?.value || "$MEME";
@@ -371,17 +357,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const formData = new FormData();
                 formData.append('file', selectedMemeFile);
                 try {
-                    // 1. Upload Image
-                    const imgRes = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+                    // 1. Upload Image (via serverless proxy so the Pinata JWT never reaches the browser)
+                    const imgRes = await fetch('/api/pinata-upload', {
                         method: 'POST',
-                        headers: { 'Authorization': `Bearer ${import.meta.env.VITE_PINATA_JWT}` },
                         body: formData
                     });
                     const imgData = await imgRes.json();
                     if (imgData?.IpfsHash) {
                         const imageUri = `ipfs://${imgData.IpfsHash}`;
                         finalDbImageUrl = `https://ipfs.io/ipfs/${imgData.IpfsHash}`;
-                        
+
                         const jsonMetadata = {
                             name: name,
                             description: desc,
@@ -392,13 +377,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 website: website
                             }
                         };
-                        
-                        const jsonRes = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
+
+                        const jsonRes = await fetch('/api/pinata-metadata', {
                             method: 'POST',
-                            headers: { 
-                                'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${import.meta.env.VITE_PINATA_JWT}` 
-                            },
+                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 pinataContent: jsonMetadata,
                                 pinataMetadata: { name: `${symbol}_metadata.json` }
@@ -424,6 +406,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Setup MJClient
             const chain = getChain('testnet');
             const universalProvider = await window.getUniversalProvider();
+            if (!universalProvider) throw new Error("Wallet provider not initialized or not found.");
             const adapter = createAdapter(EvmAdapter, {
                 ethereumProvider: universalProvider || window.ethereum
             });
@@ -492,9 +475,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             try {
-                const supabaseUrl = window.location.origin + "/api/supabase";
-                const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-                const supabase = createClient(supabaseUrl, supabaseAnonKey);
                 
                 try {
                     const payload = {
@@ -708,9 +688,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         async function updateLaunchedCount(userAddress) {
             try {
-                const supabaseUrl = window.location.origin + "/api/supabase";
-                const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-                const supabase = createClient(supabaseUrl, supabaseAnonKey);
                 
                 const { count, error } = await supabase
                     .from('meme_tokens')
@@ -729,9 +706,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             try {
                 portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6;">Loading your portfolio... <br><small>Checking balances across the DEX...</small></div>';
                 
-                const supabaseUrl = window.location.origin + "/api/supabase";
-                const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-                const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
                 // Fetch all tokens
                 const { data: allTokens, error } = await supabase.from('meme_tokens').select('*');
@@ -797,9 +771,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             try {
                 portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6;">Loading your launched memes...</div>';
                 
-                const supabaseUrl = window.location.origin + "/api/supabase";
-                const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-                const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
                 // Fetch tokens where user is creator
                 const { data: launchedTokens, error } = await supabase

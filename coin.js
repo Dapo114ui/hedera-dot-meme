@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from './supabase.js';
 import { ethers, Interface } from 'ethers';
 import { ContractId } from '@hashgraph/sdk';
 import { CONTRACT_DEPLOYMENTS, createAdapter, getChain, MJClient, EvmAdapter } from '@buidlerlabs/memejob-sdk-js';
@@ -16,16 +16,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     try {
-        // Initialize Supabase
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        
-        if (!supabaseUrl || !supabaseAnonKey) {
-            throw new Error("Supabase Environment Variables are missing! Ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set in Vercel.");
-        }
-        
-        const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
         // 2. Fetch Data from Supabase (case-insensitive match)
         let tokenData = null;
         try {
