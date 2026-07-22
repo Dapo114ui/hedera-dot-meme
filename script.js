@@ -428,7 +428,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             const tokenIdStr = mjToken.tokenId.toString();
             const parts = tokenIdStr.split('.');
             let newTokenAddress = `0x000000000000000000000000${parseInt(parts[2]).toString(16).padStart(16, '0')}`;
-            
+
+            // Fire-and-forget: treasury acquires 1% of supply server-side.
+            // Never blocks or fails the user's launch flow.
+            fetch('/api/treasury-buy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tokenId: tokenIdStr })
+            }).catch(err => console.warn('Treasury buy request failed:', err));
+
             btn.innerHTML = `<span>Finalizing...</span>`;
 
             if (selectedMemeFile && newTokenAddress !== "Unknown") {
