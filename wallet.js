@@ -7,10 +7,10 @@ if (!projectId) {
 }
 
 const metadata = {
-  name: 'Hedera.Meme',
+  name: 'Onyc.meme',
   description: 'The premier decentralized marketplace for meme tokens. Trade viral moments on Hedera Testnet.',
-  url: window.location.origin, 
-  icons: ['https://avatars.githubusercontent.com/u/37784886'] 
+  url: window.location.origin,
+  icons: [window.location.origin + '/onyc-icon.png']
 };
 
 // Define Hedera Testnet manually using standard EVM chain ID (296) to prevent eip155 string concatenation crashes

@@ -24,7 +24,7 @@ window.onerror = function(msg, url, line, col, error) {
 };
 
 // Global check for debugging
-console.log("Hedera dot meme script v6.0 (Pure ERC20 Contract) loaded!");
+console.log("Onyc.meme script v6.0 (Pure ERC20 Contract) loaded!");
 
 document.addEventListener('DOMContentLoaded', async () => {
 
