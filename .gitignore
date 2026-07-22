@@ -3,5 +3,14 @@ node_modules
 dist/
 .env
 .env.local
+.env.production
 build_log.txt
 *.log
+
+# Compiled contract artifacts (large, regenerate via hardhat/solc)
+*_output.json
+artifacts/
+cache/
+
+# Archived pre-memejob-SDK contracts/scripts (not used by the live app)
+archive/
