@@ -11,9 +11,10 @@ import {
     TokenId,
     ContractId
 } from '@hashgraph/sdk';
-import { Interface, parseUnits, formatUnits, BrowserProvider, Contract, parseEther, JsonRpcProvider } from 'ethers';
+import { formatUnits } from 'ethers';
 import { appkit } from './wallet.js';
 import { CONTRACT_DEPLOYMENTS, createAdapter, getChain, MJClient, EvmAdapter } from "@buidlerlabs/memejob-sdk-js";
+import { evmAddressToHederaId } from './mirror-trades.js';
 
 let selectedMemeFile = null;
 
@@ -712,62 +713,58 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         async function loadTokensHeld(userAddress) {
             try {
-                portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6;">Loading your portfolio... <br><small>Checking balances across the DEX...</small></div>';
-                
+                portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6;">Loading your portfolio...</div>';
 
-                // Fetch all tokens
-                const { data: allTokens, error } = await supabase.from('meme_tokens').select('*');
-                if (error) throw error;
+                if (!currentUserNative) {
+                    portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6;">Could not resolve your Hedera account.</div>';
+                    return;
+                }
 
-                if (!allTokens || allTokens.length === 0) {
-                    portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6;">No tokens available on the DEX yet.</div>';
+                // Ask mirror node what this account actually holds instead of
+                // probing every platform token's balanceOf individually - that
+                // doesn't scale as the number of launched tokens grows.
+                const heldBalances = new Map(); // hedera token id -> raw balance
+                let url = `https://testnet.mirrornode.hedera.com/api/v1/accounts/${currentUserNative}/tokens?limit=100`;
+                while (url) {
+                    const res = await fetch(url);
+                    if (!res.ok) throw new Error('Failed to fetch account token balances');
+                    const data = await res.json();
+                    for (const t of data.tokens || []) {
+                        if (Number(t.balance) > 0) heldBalances.set(t.token_id, t.balance);
+                    }
+                    url = data.links && data.links.next ? `https://testnet.mirrornode.hedera.com${data.links.next}` : null;
+                }
+
+                if (heldBalances.size === 0) {
+                    portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6;">You don\'t hold any tokens yet. Start trading!</div>';
                     if (statTokensHeld) statTokensHeld.innerText = "0";
                     return;
                 }
 
-                // Check balances
-                const rpcProvider = new JsonRpcProvider('https://testnet.hashio.io/api');
-                const ERC20_ABI = ["function balanceOf(address owner) view returns (uint256)"];
-                
-                let tokensHeldCount = 0;
-                let fetchErrors = 0;
-                portfolioGrid.innerHTML = '';
+                const { data: allTokens, error } = await supabase.from('meme_tokens').select('*');
+                if (error) throw error;
 
-                // Load hidden memes
                 const hiddenKey = `hidden_memes_${userAddress.toLowerCase()}`;
                 const hiddenMemes = JSON.parse(localStorage.getItem(hiddenKey) || "[]");
 
-                // Execute balanceOf concurrently for performance
-                await Promise.all(allTokens.map(async (token) => {
-                    if (hiddenMemes.includes(token.token_address.toLowerCase())) return;
+                portfolioGrid.innerHTML = '';
+                let tokensHeldCount = 0;
 
-                    try {
-                        const tokenContract = new Contract(token.token_address, ERC20_ABI, rpcProvider);
-                        const balance = await tokenContract.balanceOf(userAddress);
-                        console.log(`Token ${token.symbol} raw balance:`, balance, "Type:", typeof balance);
-                        
-                        // Handle Ethers v6 BigInt explicitly
-                        const balanceBigInt = BigInt(balance);
-                        if (balanceBigInt > 0n) {
-                            tokensHeldCount++;
-                            // Hedera tokens standardly use 8 decimals, not 18
-                            const formattedBalance = parseFloat(formatUnits(balanceBigInt, 8)).toLocaleString(undefined, { maximumFractionDigits: 2 });
-                            renderTokenCard(token, formattedBalance, 'held', hiddenMemes, hiddenKey, userAddress);
-                        }
-                    } catch (err) {
-                        fetchErrors++;
-                        console.error(`Failed to fetch balance for ${token.token_address}`, err);
-                    }
-                }));
+                for (const token of allTokens || []) {
+                    if (hiddenMemes.includes(token.token_address.toLowerCase())) continue;
+                    const rawBalance = heldBalances.get(evmAddressToHederaId(token.token_address));
+                    if (!rawBalance) continue;
+
+                    tokensHeldCount++;
+                    // Hedera tokens standardly use 8 decimals, not 18
+                    const formattedBalance = parseFloat(formatUnits(BigInt(rawBalance), 8)).toLocaleString(undefined, { maximumFractionDigits: 2 });
+                    renderTokenCard(token, formattedBalance, 'held', hiddenMemes, hiddenKey, userAddress);
+                }
 
                 if (statTokensHeld) statTokensHeld.innerText = tokensHeldCount.toString();
 
                 if (tokensHeldCount === 0) {
-                    if (fetchErrors > 0) {
-                        portfolioGrid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6; color: #ff4d4d;">Failed to fetch some balances from the network.<br><small>(${fetchErrors} errors recorded. RPC rate limits may be active.)</small></div>`;
-                    } else {
-                        portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6;">You don\'t hold any tokens yet. Start trading!</div>';
-                    }
+                    portfolioGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px; opacity: 0.6;">You don\'t hold any tokens yet. Start trading!</div>';
                 }
             } catch (error) {
                 console.error("Error loading portfolio:", error);
@@ -898,7 +895,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const primaryBtn = document.querySelector('.primary-btn');
     if (primaryBtn) {
         primaryBtn.addEventListener('click', () => {
-            alert('Redirecting to trading interface...');
+            window.location.href = 'markets.html';
         });
     }
 
@@ -999,7 +996,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error("Error loading markets:", error);
             tokensGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #ff4d4d;">Error loading market data.</div>';
         }
-      async function loadLeaderboard() {
+    }
+
+    async function loadLeaderboard() {
         try {
             const memejobAccountId = "0.0.5271847";
             const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/tokens?account.id=${memejobAccountId}&limit=50&order=desc`);
@@ -1100,7 +1099,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (topCreatorsList) topCreatorsList.innerHTML = '<div style="color: #ff4d4d; text-align: center; padding: 20px;">Error loading data</div>';
             if (topMemesList) topMemesList.innerHTML = '<div style="color: #ff4d4d; text-align: center; padding: 20px;">Error loading data</div>';
         }
-    }
     }
 
     const secondaryBtn = document.querySelector('.secondary-btn');
