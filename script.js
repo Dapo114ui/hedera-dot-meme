@@ -3,6 +3,7 @@ import { supabase } from './supabase.js';
 import { formatUnits } from 'ethers';
 import { appkit } from './wallet.js';
 import { evmAddressToHederaId, fetchTopTokensByVolume, fetchTokenMarketStats } from './mirror-trades.js';
+import { isWatchlisted, toggleWatchlist } from './watchlist.js';
 
 // @hashgraph/sdk and @buidlerlabs/memejob-sdk-js (which pulls in viem) are
 // ~3.5MB combined - dynamically imported only where actually needed (the
@@ -957,25 +958,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     let marketsVisibleCount = 12;
     const MARKETS_PAGE_SIZE = 12;
 
+    const STAR_FILLED = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
+    const STAR_OUTLINE = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
+
     function renderMarketsList() {
         const term = marketsSearchTerm.trim().toLowerCase();
-        let filtered = term
-            ? allMarketTokens.filter(t =>
-                t.name.toLowerCase().includes(term) || t.symbol.toLowerCase().includes(term))
-            : allMarketTokens.slice();
+        let filtered = allMarketTokens.slice();
+
+        if (marketsSortMode === 'watchlist') {
+            filtered = filtered.filter(t => isWatchlisted(t.address));
+        }
+        if (term) {
+            filtered = filtered.filter(t =>
+                t.name.toLowerCase().includes(term) || t.symbol.toLowerCase().includes(term));
+        }
 
         if (marketsSortMode === 'new') {
             filtered.sort((a, b) => b.createdMs - a.createdMs);
         } else if (marketsSortMode === 'gainers') {
             filtered.sort((a, b) => b.changePct - a.changePct);
         } else {
-            // 'trending' and 'volume' both rank by real trade volume
+            // 'trending', 'volume', and 'watchlist' all rank by real trade volume
             filtered.sort((a, b) => (b.volumeHbar - a.volumeHbar));
         }
 
         tokensGrid.innerHTML = '';
         if (filtered.length === 0) {
-            tokensGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; opacity: 0.7;">No tokens match.</div>';
+            const emptyMsg = marketsSortMode === 'watchlist'
+                ? 'Your watchlist is empty. Click the star on any token to add it.'
+                : 'No tokens match.';
+            tokensGrid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; opacity: 0.7;">${emptyMsg}</div>`;
             marketsLoadMoreBtn.style.display = 'none';
             return;
         }
@@ -993,10 +1005,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 : '—';
             const volumeDisplay = token.hasTrades ? `${token.volumeHbar.toLocaleString(undefined, { maximumFractionDigits: 2 })} ℏ` : 'No trades yet';
 
+            const watchlisted = isWatchlisted(token.address);
+
             const tokenCard = document.createElement('a');
             tokenCard.href = `coin.html?address=${token.address}`;
             tokenCard.className = 'token-card';
             tokenCard.innerHTML = `
+                <button class="watchlist-star-btn ${watchlisted ? 'active' : ''}" aria-label="Toggle watchlist">${watchlisted ? STAR_FILLED : STAR_OUTLINE}</button>
                 <div class="card-header">
                     <div class="token-avatar" style="background: url('${token.displayImage}') center/cover no-repeat; border-radius: 12px; width: 60px; height: 60px; border: 2px solid rgba(255, 215, 0, 0.2);"></div>
                     <div class="token-info">
@@ -1026,6 +1041,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                 </div>
             `;
+
+            const starBtn = tokenCard.querySelector('.watchlist-star-btn');
+            starBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const nowWatchlisted = toggleWatchlist(token.address);
+                if (marketsSortMode === 'watchlist' && !nowWatchlisted) {
+                    renderMarketsList();
+                } else {
+                    starBtn.classList.toggle('active', nowWatchlisted);
+                    starBtn.innerHTML = nowWatchlisted ? STAR_FILLED : STAR_OUTLINE;
+                }
+            });
+
             tokensGrid.appendChild(tokenCard);
         });
 

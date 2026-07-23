@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js';
 import { ethers } from 'ethers';
 import { evmAddressToHederaId, fetchTokenTrades, fetchTokenHolders } from './mirror-trades.js';
+import { isWatchlisted, toggleWatchlist } from './watchlist.js';
 
 // @hashgraph/sdk and @buidlerlabs/memejob-sdk-js (which pulls in viem) are
 // ~3.5MB combined - dynamically imported only where actually needed (the
@@ -100,6 +101,40 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Provide full copy functionality
         document.getElementById('copy-contract').onclick = () => navigator.clipboard.writeText(tokenAddress);
         document.getElementById('copy-creator').onclick = () => navigator.clipboard.writeText(tokenData.creator_address);
+
+        // Watchlist toggle
+        const watchlistBtn = document.getElementById('watchlist-toggle-btn');
+        if (watchlistBtn) {
+            const setWatchlistState = (active) => watchlistBtn.classList.toggle('active', active);
+            setWatchlistState(isWatchlisted(tokenAddress));
+            watchlistBtn.onclick = () => setWatchlistState(toggleWatchlist(tokenAddress));
+        }
+
+        // Social share buttons
+        const shareUrl = window.location.href;
+        const shareText = `Check out ${tokenData.name} (${tokenData.symbol.startsWith('$') ? tokenData.symbol : '$' + tokenData.symbol}) on Onyc.meme`;
+        const twitterBtn = document.getElementById('share-twitter-btn');
+        if (twitterBtn) {
+            twitterBtn.onclick = () => window.open(
+                `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`,
+                '_blank', 'noopener'
+            );
+        }
+        const telegramBtn = document.getElementById('share-telegram-btn');
+        if (telegramBtn) {
+            telegramBtn.onclick = () => window.open(
+                `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`,
+                '_blank', 'noopener'
+            );
+        }
+        const copyShareBtn = document.getElementById('share-copy-btn');
+        if (copyShareBtn) {
+            copyShareBtn.onclick = () => {
+                navigator.clipboard.writeText(shareUrl);
+                copyShareBtn.classList.add('active');
+                setTimeout(() => copyShareBtn.classList.remove('active'), 1500);
+            };
+        }
 
         // Hide loader, show content
         document.getElementById('coin-loader').style.display = 'none';

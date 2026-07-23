@@ -395,6 +395,7 @@ body {
 }
 
 .token-card {
+    position: relative;
     background-color: #121315;
     border: 1px solid var(--border-color);
     border-radius: 16px;
@@ -405,6 +406,34 @@ body {
     flex-direction: column;
     transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
     cursor: pointer;
+}
+
+.watchlist-star-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    z-index: 5;
+}
+
+.watchlist-star-btn:hover {
+    color: var(--accent-yellow);
+    border-color: var(--accent-yellow);
+}
+
+.watchlist-star-btn.active {
+    color: var(--accent-yellow);
+    border-color: rgba(253, 224, 48, 0.4);
 }
 
 .token-card:hover {
@@ -1267,6 +1296,37 @@ body {
     display: flex;
     align-items: center;
     gap: 20px;
+}
+
+.token-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.header-action-btn {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.header-action-btn:hover {
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.header-action-btn.active {
+    color: var(--accent-yellow);
+    border-color: rgba(253, 224, 48, 0.4);
 }
 
 .coin-avatar {
