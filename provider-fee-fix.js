@@ -66,17 +66,31 @@ export function wrapProviderForLegacyFees(provider) {
                         };
                     }
                     if (args?.method === 'eth_sendTransaction' && args.params?.[0]) {
-                        return target.request({
-                            ...args,
-                            params: [withSafeGasFloor(args.params[0]), ...args.params.slice(1)]
-                        });
+                        const bumpedTx = withSafeGasFloor(args.params[0]);
+                        console.log('[provider-fee-fix] eth_sendTransaction gas:', args.params[0].gas, '->', bumpedTx.gas, 'value:', bumpedTx.value);
+                        try {
+                            return await target.request({
+                                ...args,
+                                params: [bumpedTx, ...args.params.slice(1)]
+                            });
+                        } catch (e) {
+                            console.error('[provider-fee-fix] eth_sendTransaction raw provider error:', e);
+                            throw e;
+                        }
                     }
                     if (args?.method === 'wallet_sendTransaction') {
-                        return target.request({
-                            ...args,
-                            method: 'eth_sendTransaction',
-                            params: args.params?.[0] ? [withSafeGasFloor(args.params[0]), ...args.params.slice(1)] : args.params
-                        });
+                        const bumpedTx = args.params?.[0] ? withSafeGasFloor(args.params[0]) : undefined;
+                        console.log('[provider-fee-fix] wallet_sendTransaction forwarding as eth_sendTransaction, gas:', args.params?.[0]?.gas, '->', bumpedTx?.gas);
+                        try {
+                            return await target.request({
+                                ...args,
+                                method: 'eth_sendTransaction',
+                                params: bumpedTx ? [bumpedTx, ...args.params.slice(1)] : args.params
+                            });
+                        } catch (e) {
+                            console.error('[provider-fee-fix] wallet_sendTransaction (forwarded) raw provider error:', e);
+                            throw e;
+                        }
                     }
                     return target.request(args);
                 };
