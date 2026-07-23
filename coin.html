@@ -146,7 +146,8 @@
                     <div id="tvchart-container" class="chart-container"></div>
                 </div>
 
-                <!-- Right: Trade Panel -->
+                <!-- Right: Trade Panel + Price Alerts -->
+                <div style="display: flex; flex-direction: column; gap: 20px;">
                 <div class="trade-panel">
                     <h2 class="panel-title">Trade</h2>
                     <div class="trade-tabs">
@@ -194,6 +195,27 @@
                     </div>
 
                     <button class="trade-submit-btn" id="trade-submit-btn">Buy Token</button>
+                </div>
+
+                <div class="trade-panel">
+                    <h2 class="panel-title">Price Alerts</h2>
+                    <p class="subtext" style="margin-bottom: 12px;">Checked while this page is open in your browser - not a push notification.</p>
+
+                    <div class="trade-input-group">
+                        <label for="alert-direction">Notify me when price</label>
+                        <select id="alert-direction" style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 12px; border-radius: 8px; font-family: inherit; margin-bottom: 8px;">
+                            <option value="above">Rises above</option>
+                            <option value="below">Falls below</option>
+                        </select>
+                        <div class="input-wrapper">
+                            <input type="number" id="alert-target-price" placeholder="Target price in HBAR" min="0" step="any">
+                        </div>
+                    </div>
+
+                    <button class="trade-submit-btn" id="alert-set-btn" style="background: var(--accent-yellow); color: #000;">Set Alert</button>
+
+                    <ul id="alerts-list" style="list-style: none; margin-top: 16px; display: flex; flex-direction: column; gap: 8px;"></ul>
+                </div>
                 </div>
             </div>
 

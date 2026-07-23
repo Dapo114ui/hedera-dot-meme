@@ -2,6 +2,7 @@ import { supabase } from './supabase.js';
 import { ethers } from 'ethers';
 import { evmAddressToHederaId, fetchTokenTrades, fetchTokenHolders } from './mirror-trades.js';
 import { isWatchlisted, toggleWatchlist } from './watchlist.js';
+import { getAlertsForToken, addAlert, removeAlert, checkAlerts } from './alerts.js';
 
 // @hashgraph/sdk and @buidlerlabs/memejob-sdk-js (which pulls in viem) are
 // ~3.5MB combined - dynamically imported only where actually needed (the
@@ -341,6 +342,12 @@ function setupTradeInterface(tokenAddress) {
                 document.getElementById('stat-mcap-usd').textContent = `$${(mcap * 0.05).toLocaleString(undefined, {maximumFractionDigits:2})}`;
                 
                 document.getElementById('stat-volume').textContent = `--- ℏ`;
+
+                const triggered = checkAlerts(tokenAddress, priceInHbar);
+                if (triggered.length > 0) {
+                    triggered.forEach(a => showAlertToast(a));
+                    renderAlertsList();
+                }
             }
 
             if (window.ethereum) {
@@ -364,6 +371,58 @@ function setupTradeInterface(tokenAddress) {
 
     fetchStats();
     setInterval(fetchStats, 10000); // refresh every 10s
+
+    function renderAlertsList() {
+        const list = document.getElementById('alerts-list');
+        if (!list) return;
+        const active = getAlertsForToken(tokenAddress);
+
+        if (active.length === 0) {
+            list.innerHTML = '<li style="color: #94a3b8; font-size: 0.85rem;">No active alerts.</li>';
+            return;
+        }
+
+        list.innerHTML = '';
+        active.forEach(alertItem => {
+            const li = document.createElement('li');
+            li.style.cssText = 'display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); padding: 8px 12px; border-radius: 8px; font-size: 0.85rem;';
+            li.innerHTML = `
+                <span>${alertItem.direction === 'above' ? 'Above' : 'Below'} ${alertItem.targetPrice} ℏ</span>
+                <button aria-label="Remove alert" style="background: transparent; border: none; color: #94a3b8; cursor: pointer;">✕</button>
+            `;
+            li.querySelector('button').addEventListener('click', () => {
+                removeAlert(alertItem.id);
+                renderAlertsList();
+            });
+            list.appendChild(li);
+        });
+    }
+
+    function showAlertToast(alertItem) {
+        const toast = document.createElement('div');
+        toast.textContent = `🔔 Price ${alertItem.direction === 'above' ? 'rose above' : 'fell below'} ${alertItem.targetPrice} ℏ`;
+        toast.style.cssText = 'position: fixed; bottom: 24px; right: 24px; background: var(--accent-yellow); color: #000; padding: 14px 20px; border-radius: 10px; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 1000;';
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 6000);
+    }
+
+    renderAlertsList();
+
+    const alertSetBtn = document.getElementById('alert-set-btn');
+    if (alertSetBtn) {
+        alertSetBtn.addEventListener('click', () => {
+            const priceInput = document.getElementById('alert-target-price');
+            const direction = document.getElementById('alert-direction').value;
+            const targetPrice = parseFloat(priceInput.value);
+            if (!targetPrice || targetPrice <= 0) {
+                alert('Enter a valid target price.');
+                return;
+            }
+            addAlert(tokenAddress, targetPrice, direction);
+            priceInput.value = '';
+            renderAlertsList();
+        });
+    }
 
     async function updateReceiveAmount() {
         const amount = parseFloat(tradeAmount.value);
