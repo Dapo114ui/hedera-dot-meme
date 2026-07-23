@@ -2,6 +2,7 @@ import { supabase } from './supabase.js';
 import { ethers } from 'ethers';
 import { evmAddressToHederaId, fetchTokenTrades, fetchTokenHolders } from './mirror-trades.js';
 import { isWatchlisted, toggleWatchlist } from './watchlist.js';
+import { wrapProviderForLegacyFees } from './provider-fee-fix.js';
 import { getAlertsForToken, addAlert, removeAlert, checkAlerts } from './alerts.js';
 
 // @hashgraph/sdk and @buidlerlabs/memejob-sdk-js (which pulls in viem) are
@@ -518,7 +519,7 @@ function setupTradeInterface(tokenAddress) {
             ]);
             const chain = getChain('testnet');
             const adapter = createAdapter(EvmAdapter, {
-                ethereumProvider: universalProvider || window.ethereum
+                ethereumProvider: wrapProviderForLegacyFees(universalProvider || window.ethereum)
             });
             const client = new MJClient(adapter, {
                 chain: chain,

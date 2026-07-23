@@ -4,6 +4,7 @@ import { formatUnits } from 'ethers';
 import { appkit } from './wallet.js';
 import { evmAddressToHederaId, fetchTopTokensByVolume, fetchTokenMarketStats } from './mirror-trades.js';
 import { isWatchlisted, toggleWatchlist } from './watchlist.js';
+import { wrapProviderForLegacyFees } from './provider-fee-fix.js';
 
 // @hashgraph/sdk and @buidlerlabs/memejob-sdk-js (which pulls in viem) are
 // ~3.5MB combined - dynamically imported only where actually needed (the
@@ -437,7 +438,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const universalProvider = await window.getUniversalProvider();
             if (!universalProvider) throw new Error("Wallet provider not initialized or not found.");
             const adapter = createAdapter(EvmAdapter, {
-                ethereumProvider: universalProvider || window.ethereum
+                ethereumProvider: wrapProviderForLegacyFees(universalProvider || window.ethereum)
             });
             const client = new MJClient(adapter, {
                 chain: chain,
