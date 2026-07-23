@@ -1,8 +1,11 @@
 import { supabase } from './supabase.js';
 import { ethers } from 'ethers';
-import { ContractId } from '@hashgraph/sdk';
-import { CONTRACT_DEPLOYMENTS, createAdapter, getChain, MJClient, EvmAdapter } from '@buidlerlabs/memejob-sdk-js';
 import { evmAddressToHederaId, fetchTokenTrades, fetchTokenHolders } from './mirror-trades.js';
+
+// @hashgraph/sdk and @buidlerlabs/memejob-sdk-js (which pulls in viem) are
+// ~3.5MB combined - dynamically imported only where actually needed (the
+// trade handler below) so viewing a token's page doesn't pay for it unless
+// the user actually buys/sells.
 
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -415,6 +418,10 @@ function setupTradeInterface(tokenAddress) {
             if (window.ensureHederaTestnet) await window.ensureHederaTestnet();
 
             // Set up MemeJob Client
+            const [{ ContractId }, { CONTRACT_DEPLOYMENTS, createAdapter, getChain, MJClient, EvmAdapter }] = await Promise.all([
+                import('@hashgraph/sdk'),
+                import('@buidlerlabs/memejob-sdk-js')
+            ]);
             const chain = getChain('testnet');
             const adapter = createAdapter(EvmAdapter, {
                 ethereumProvider: universalProvider || window.ethereum

@@ -1,20 +1,12 @@
 import { Buffer } from 'buffer';
 import { supabase } from './supabase.js';
-import {
-    TokenCreateTransaction, 
-    TransferTransaction, 
-    Hbar, 
-    AccountId, 
-    TokenType, 
-    TokenSupplyType,
-    TransactionId,
-    TokenId,
-    ContractId
-} from '@hashgraph/sdk';
 import { formatUnits } from 'ethers';
 import { appkit } from './wallet.js';
-import { CONTRACT_DEPLOYMENTS, createAdapter, getChain, MJClient, EvmAdapter } from "@buidlerlabs/memejob-sdk-js";
 import { evmAddressToHederaId, fetchTopTokensByVolume } from './mirror-trades.js';
+
+// @hashgraph/sdk and @buidlerlabs/memejob-sdk-js (which pulls in viem) are
+// ~3.5MB combined - dynamically imported only where actually needed (the
+// launch handler below) so pages that never launch a token don't pay for it.
 
 let selectedMemeFile = null;
 
@@ -436,6 +428,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (window.ensureHederaTestnet) await window.ensureHederaTestnet();
 
             // Setup MJClient
+            const [{ ContractId }, { CONTRACT_DEPLOYMENTS, createAdapter, getChain, MJClient, EvmAdapter }] = await Promise.all([
+                import('@hashgraph/sdk'),
+                import('@buidlerlabs/memejob-sdk-js')
+            ]);
             const chain = getChain('testnet');
             const universalProvider = await window.getUniversalProvider();
             if (!universalProvider) throw new Error("Wallet provider not initialized or not found.");
