@@ -11,6 +11,19 @@
 // honest answer - everything else passes through to the real provider
 // unchanged, via a Proxy so other methods/properties (event listeners,
 // etc.) keep working normally.
+//
+// Separately, viem's sendTransaction() has a quirk: if the wallet's
+// eth_sendTransaction call fails with an error it classifies as
+// "method/input not supported" (which includes the generic -32000
+// "Invalid input" range - the bucket HashPack uses for real transaction
+// failures too), viem silently retries via wallet_sendTransaction to see
+// if that namespace works instead. HashPack doesn't implement
+// wallet_sendTransaction at all, so that retry always fails with its own
+// "Unsupported method" error - and viem surfaces THAT instead of the
+// original failure, hiding the real reason the transaction didn't go
+// through. Forwarding wallet_sendTransaction straight to the real
+// eth_sendTransaction makes that retry a harmless no-op, so whatever
+// actually caused the transaction to fail is what reaches the user.
 export function wrapProviderForLegacyFees(provider) {
     if (!provider || typeof provider.request !== 'function') return provider;
 
@@ -29,6 +42,9 @@ export function wrapProviderForLegacyFees(provider) {
                             gasUsedRatio: Array(blockCount).fill(0),
                             reward: Array(blockCount).fill(['0x0'])
                         };
+                    }
+                    if (args?.method === 'wallet_sendTransaction') {
+                        return target.request({ ...args, method: 'eth_sendTransaction' });
                     }
                     return target.request(args);
                 };
