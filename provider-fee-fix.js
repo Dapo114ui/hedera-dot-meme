@@ -24,6 +24,28 @@
 // through. Forwarding wallet_sendTransaction straight to the real
 // eth_sendTransaction makes that retry a harmless no-op, so whatever
 // actually caused the transaction to fail is what reaches the user.
+//
+// With that masking gone, the real failure turned out to be a gas limit
+// problem: the SDK hardcodes gas: 400000n for token creation (memeJob),
+// which is LESS than the 750000n it hardcodes for plain HTS associate/
+// approve calls, even though creating a brand new HTS token is a heavier
+// operation than either of those. There's no public option to raise it
+// from our code either, so we bump the gas field on outgoing
+// eth_sendTransaction calls up to a safe floor when the SDK's requested
+// limit is lower - unused gas on Hedera (as on Ethereum) is simply not
+// spent, so this only removes headroom problems, it doesn't cost more.
+const MIN_SAFE_GAS = 1000000n;
+
+function withSafeGasFloor(tx) {
+    if (!tx || typeof tx.gas !== 'string') return tx;
+    try {
+        if (BigInt(tx.gas) >= MIN_SAFE_GAS) return tx;
+    } catch {
+        return tx;
+    }
+    return { ...tx, gas: '0x' + MIN_SAFE_GAS.toString(16) };
+}
+
 export function wrapProviderForLegacyFees(provider) {
     if (!provider || typeof provider.request !== 'function') return provider;
 
@@ -43,8 +65,18 @@ export function wrapProviderForLegacyFees(provider) {
                             reward: Array(blockCount).fill(['0x0'])
                         };
                     }
+                    if (args?.method === 'eth_sendTransaction' && args.params?.[0]) {
+                        return target.request({
+                            ...args,
+                            params: [withSafeGasFloor(args.params[0]), ...args.params.slice(1)]
+                        });
+                    }
                     if (args?.method === 'wallet_sendTransaction') {
-                        return target.request({ ...args, method: 'eth_sendTransaction' });
+                        return target.request({
+                            ...args,
+                            method: 'eth_sendTransaction',
+                            params: args.params?.[0] ? [withSafeGasFloor(args.params[0]), ...args.params.slice(1)] : args.params
+                        });
                     }
                     return target.request(args);
                 };
