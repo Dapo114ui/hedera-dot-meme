@@ -2,7 +2,7 @@ import { Buffer } from 'buffer';
 import { supabase } from './supabase.js';
 import { formatUnits } from 'ethers';
 import { appkit } from './wallet.js';
-import { evmAddressToHederaId, fetchTopTokensByVolume } from './mirror-trades.js';
+import { evmAddressToHederaId, fetchTopTokensByVolume, fetchTokenMarketStats } from './mirror-trades.js';
 
 // @hashgraph/sdk and @buidlerlabs/memejob-sdk-js (which pulls in viem) are
 // ~3.5MB combined - dynamically imported only where actually needed (the
@@ -937,6 +937,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Markets Page Logic
     const tokensGrid = document.getElementById('tokens-grid');
+    const marketsSearchInput = document.getElementById('markets-search');
+    const marketsLoadMoreBtn = document.getElementById('markets-load-more');
+    const marketsFilterBtns = document.querySelectorAll('.markets-filters .filter-btn');
     if (tokensGrid) {
         loadMarkets();
     }
@@ -947,95 +950,183 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (topCreatorsList && topMemesList) {
         loadLeaderboard();
     }
+
+    let allMarketTokens = [];
+    let marketsSortMode = 'trending';
+    let marketsSearchTerm = '';
+    let marketsVisibleCount = 12;
+    const MARKETS_PAGE_SIZE = 12;
+
+    function renderMarketsList() {
+        const term = marketsSearchTerm.trim().toLowerCase();
+        let filtered = term
+            ? allMarketTokens.filter(t =>
+                t.name.toLowerCase().includes(term) || t.symbol.toLowerCase().includes(term))
+            : allMarketTokens.slice();
+
+        if (marketsSortMode === 'new') {
+            filtered.sort((a, b) => b.createdMs - a.createdMs);
+        } else if (marketsSortMode === 'gainers') {
+            filtered.sort((a, b) => b.changePct - a.changePct);
+        } else {
+            // 'trending' and 'volume' both rank by real trade volume
+            filtered.sort((a, b) => (b.volumeHbar - a.volumeHbar));
+        }
+
+        tokensGrid.innerHTML = '';
+        if (filtered.length === 0) {
+            tokensGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; opacity: 0.7;">No tokens match.</div>';
+            marketsLoadMoreBtn.style.display = 'none';
+            return;
+        }
+
+        const visible = filtered.slice(0, marketsVisibleCount);
+        visible.forEach(token => {
+            const cleanSymbol = token.symbol.startsWith('$') ? token.symbol : `$${token.symbol}`;
+            const isNew = (Date.now() - token.createdMs) < (24 * 60 * 60 * 1000);
+            const newBadgeHtml = isNew ? `<span class="hot-badge">New</span>` : '';
+
+            const priceDisplay = token.hasTrades ? `${token.lastPrice.toFixed(8)} ℏ` : '—';
+            const changeClass = token.hasTrades ? (token.changePct >= 0 ? 'positive' : 'negative') : '';
+            const changeDisplay = token.hasTrades
+                ? `${token.changePct >= 0 ? '↗' : '↘'} ${token.changePct.toFixed(1)}%`
+                : '—';
+            const volumeDisplay = token.hasTrades ? `${token.volumeHbar.toLocaleString(undefined, { maximumFractionDigits: 2 })} ℏ` : 'No trades yet';
+
+            const tokenCard = document.createElement('a');
+            tokenCard.href = `coin.html?address=${token.address}`;
+            tokenCard.className = 'token-card';
+            tokenCard.innerHTML = `
+                <div class="card-header">
+                    <div class="token-avatar" style="background: url('${token.displayImage}') center/cover no-repeat; border-radius: 12px; width: 60px; height: 60px; border: 2px solid rgba(255, 215, 0, 0.2);"></div>
+                    <div class="token-info">
+                        <div class="token-name-row">
+                            <span class="token-name">${token.name}</span>
+                            ${newBadgeHtml}
+                        </div>
+                        <span class="token-symbol">${cleanSymbol}</span>
+                    </div>
+                </div>
+                <div class="card-stats">
+                    <div class="stat-group">
+                        <span class="stat-label">Price</span>
+                        <span class="stat-value">${priceDisplay}</span>
+                    </div>
+                    <div class="stat-group">
+                        <span class="stat-label">Change</span>
+                        <span class="stat-value ${changeClass}">${changeDisplay}</span>
+                    </div>
+                    <div class="stat-group">
+                        <span class="stat-label">Volume</span>
+                        <span class="stat-value">${volumeDisplay}</span>
+                    </div>
+                    <div class="stat-group">
+                        <span class="stat-label">Initial Supply</span>
+                        <span class="stat-value positive">${token.supplyDisplay}</span>
+                    </div>
+                </div>
+            `;
+            tokensGrid.appendChild(tokenCard);
+        });
+
+        marketsLoadMoreBtn.style.display = filtered.length > marketsVisibleCount ? 'inline-flex' : 'none';
+    }
+
+    if (tokensGrid) {
+        marketsSearchInput.addEventListener('input', (e) => {
+            marketsSearchTerm = e.target.value;
+            marketsVisibleCount = MARKETS_PAGE_SIZE;
+            renderMarketsList();
+        });
+
+        marketsFilterBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                marketsFilterBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                marketsSortMode = btn.dataset.sort;
+                marketsVisibleCount = MARKETS_PAGE_SIZE;
+                renderMarketsList();
+            });
+        });
+
+        marketsLoadMoreBtn.addEventListener('click', () => {
+            marketsVisibleCount += MARKETS_PAGE_SIZE;
+            renderMarketsList();
+        });
+    }
+
     async function loadMarkets() {
         try {
-            console.log("Fetching launched memes from Mirror Node...");
-            tokensGrid.innerHTML = '';
+            const { data: tokens, error } = await supabase.from('meme_tokens').select('*');
+            if (error) throw error;
 
-            const memejobAccountId = "0.0.5271847"; 
-            const response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/tokens?account.id=${memejobAccountId}&limit=20&order=desc`);
-            if (!response.ok) throw new Error("Failed to fetch tokens");
-
-            const data = await response.json();
-
-            if (!data.tokens || data.tokens.length === 0) {
+            if (!tokens || tokens.length === 0) {
                 tokensGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; opacity: 0.7;">No tokens launched yet. Be the first!</div>';
+                marketsLoadMoreBtn.style.display = 'none';
                 return;
             }
 
-            // Fetch details to get the IPFS memo
-            const detailedTokens = await Promise.all(data.tokens.map(async (t) => {
+            // Bounded by the number of launched tokens shown here, not by
+            // total platform activity - safe to fetch in parallel per token.
+            const supplyByAddress = new Map();
+            await Promise.all(tokens.map(async (token) => {
                 try {
-                    const detailRes = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/tokens/${t.token_id}`);
-                    if (detailRes.ok) return await detailRes.json();
-                } catch(e) {}
-                return t;
+                    const hederaId = evmAddressToHederaId(token.token_address);
+                    const res = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/tokens/${hederaId}`);
+                    if (res.ok) {
+                        const info = await res.json();
+                        if (info.total_supply) {
+                            supplyByAddress.set(token.token_address.toLowerCase(), Math.floor(Number(info.total_supply) / 1e8).toLocaleString());
+                        }
+                    }
+                } catch (e) { /* leave supply unknown for this token */ }
             }));
 
-            detailedTokens.forEach(token => {
-                const parts = token.token_id.split('.');
-                if (parts.length !== 3) return;
-                const tokenAddress = '0x' + parseInt(parts[2]).toString(16).padStart(40, '0');
-                
-                const name = token.name || 'Unknown';
-                const symbol = token.symbol || 'UNK';
-                let memo = token.memo || '';
+            allMarketTokens = tokens.map(token => {
+                const address = token.token_address.toLowerCase();
 
-                let displayImage = 'https://placehold.co/400x400/1a1a2e/ffd700?text=' + symbol.replace('$', '');
-                const localImage = localStorage.getItem(`meme_image_${tokenAddress.toLowerCase()}`);
-                
+                let displayImage = token.image_url && token.image_url.startsWith('http') ? token.image_url : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
+                const localImage = localStorage.getItem(`meme_image_${address}`);
                 if (localImage) {
                     displayImage = localImage;
-                } else {
-                    if (memo.startsWith('ipfs://')) {
-                        displayImage = memo.replace('ipfs://', 'https://ipfs.io/ipfs/');
-                    } else if (memo.startsWith('http')) {
-                        displayImage = memo;
-                    } else if (memo.startsWith('Qm') || memo.startsWith('bafy')) {
-                        displayImage = `https://ipfs.io/ipfs/${memo}`;
-                    }
-                    displayImage = displayImage.replace('gateway.pinata.cloud', 'ipfs.io');
+                } else if (token.image_url && token.image_url.startsWith('ipfs://') && !token.image_url.includes('bafybeidmeme')) {
+                    displayImage = token.image_url.replace('ipfs://', 'https://ipfs.io/ipfs/');
                 }
+                displayImage = displayImage.replace('gateway.pinata.cloud', 'ipfs.io');
 
-                const cleanSymbol = symbol.startsWith('$') ? symbol : `$${symbol}`;
-
-                const createdMs = parseFloat(token.created_timestamp) * 1000;
-                const isNew = createdMs && (Date.now() - createdMs) < (24 * 60 * 60 * 1000);
-                const newBadgeHtml = isNew ? `<span class="hot-badge">New</span>` : '';
-
-                const supplyDisplay = token.total_supply
-                    ? Math.floor(Number(token.total_supply) / 1e8).toLocaleString()
-                    : 'Unknown';
-
-                const tokenCard = document.createElement('a');
-                tokenCard.href = `coin.html?address=${tokenAddress}`;
-                tokenCard.className = 'token-card';
-                tokenCard.innerHTML = `
-                    <div class="card-header">
-                        <div id="avatar-market-${tokenAddress}" class="token-avatar" style="background: url('${displayImage}') center/cover no-repeat; border-radius: 12px; width: 60px; height: 60px; border: 2px solid rgba(255, 215, 0, 0.2);">
-                        </div>
-                        <div class="token-info">
-                            <div class="token-name-row">
-                                <span class="token-name">${name}</span>
-                                ${newBadgeHtml}
-                            </div>
-                            <span class="token-symbol">${cleanSymbol}</span>
-                        </div>
-                    </div>
-                    <div class="card-stats">
-                        <div class="stat-group">
-                            <span class="stat-label">Address</span>
-                            <span class="stat-value" style="font-size: 0.7rem; opacity: 0.6;">${tokenAddress.substring(0, 10)}...</span>
-                        </div>
-                        <div class="stat-group">
-                            <span class="stat-label">Initial Supply</span>
-                            <span class="stat-value positive">${supplyDisplay}</span>
-                        </div>
-                    </div>
-                `;
-                tokensGrid.appendChild(tokenCard);
-                // The image is already set via displayImage.
+                return {
+                    address,
+                    name: token.name || 'Unknown',
+                    symbol: token.symbol || 'UNK',
+                    displayImage,
+                    createdMs: token.created_at ? new Date(token.created_at).getTime() : 0,
+                    supplyDisplay: supplyByAddress.get(address) || 'Unknown',
+                    hasTrades: false,
+                    lastPrice: 0,
+                    changePct: 0,
+                    volumeHbar: 0
+                };
             });
+
+            // Render the list immediately with what we have - don't block
+            // on the trade-volume scan (a sequential multi-page mirror node
+            // walk that can take several seconds). Merge real price/volume/
+            // change in once it resolves, preserving whatever sort/search/
+            // pagination the user is already looking at.
+            marketsVisibleCount = MARKETS_PAGE_SIZE;
+            renderMarketsList();
+
+            fetchTokenMarketStats().then(marketStats => {
+                allMarketTokens.forEach(token => {
+                    const stats = marketStats.get(token.address);
+                    if (!stats) return;
+                    token.hasTrades = true;
+                    token.lastPrice = stats.lastPrice;
+                    token.changePct = stats.changePct;
+                    token.volumeHbar = Number(stats.volumeTinybars) / 1e8;
+                });
+                renderMarketsList();
+            }).catch(err => console.error('Failed to load market stats:', err));
         } catch (error) {
             console.error("Error loading markets:", error);
             tokensGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #ff4d4d;">Error loading market data.</div>';

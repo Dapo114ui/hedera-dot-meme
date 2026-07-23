@@ -9,7 +9,12 @@ const TRADE_EVENTS_ABI = [
 ];
 const tradeEventsInterface = new Interface(TRADE_EVENTS_ABI);
 
-const MAX_PAGES = 15;
+// Each page is a sequential round-trip (pagination is a "next" link chain,
+// not parallelizable), so this directly trades off completeness for
+// latency. 5 pages (~500 most recent logs across the whole shared
+// contract) keeps bulk ranking (leaderboard/markets) reasonably fast;
+// recency-biased data is arguably more correct for "trending" anyway.
+const MAX_PAGES = 5;
 
 export function evmAddressToHederaId(address) {
     if (!address.startsWith('0x')) return address;
@@ -67,18 +72,47 @@ export async function fetchTokenTrades(tokenEvmAddress) {
     return trades;
 }
 
-// Tallies real HBAR trade volume per token from the same shared-contract
-// log scan, so "top tokens" can be ranked by actual activity instead of
-// just recency.
-export async function fetchTopTokensByVolume() {
+// Real per-token market stats (volume, latest price, price change) from a
+// single shared-contract log scan - the price change is only across
+// whatever window the scan covers (bounded by MAX_PAGES), not a true 24h
+// figure, but it's genuine trade data rather than a fabricated number.
+export async function fetchTokenMarketStats() {
     const all = await scanRecentTradeLogs();
-    const volumeByToken = new Map();
+    const byToken = new Map();
+
     for (const t of all) {
-        const prev = volumeByToken.get(t.tokenAddress) || 0n;
-        volumeByToken.set(t.tokenAddress, prev + t.hbarTinybars);
+        const price = Number(t.hbarTinybars) / Number(t.tokenAmount);
+        const existing = byToken.get(t.tokenAddress);
+        if (!existing) {
+            byToken.set(t.tokenAddress, {
+                volumeTinybars: t.hbarTinybars,
+                firstPrice: price, firstTs: t.timestamp,
+                lastPrice: price, lastTs: t.timestamp
+            });
+        } else {
+            existing.volumeTinybars += t.hbarTinybars;
+            if (t.timestamp < existing.firstTs) { existing.firstPrice = price; existing.firstTs = t.timestamp; }
+            if (t.timestamp > existing.lastTs) { existing.lastPrice = price; existing.lastTs = t.timestamp; }
+        }
     }
-    return Array.from(volumeByToken.entries())
-        .map(([tokenAddress, hbarTinybars]) => ({ tokenAddress, hbarTinybars }))
+
+    const stats = new Map();
+    for (const [tokenAddress, s] of byToken) {
+        stats.set(tokenAddress, {
+            volumeTinybars: s.volumeTinybars,
+            lastPrice: s.lastPrice,
+            changePct: s.firstPrice > 0 ? ((s.lastPrice - s.firstPrice) / s.firstPrice) * 100 : 0
+        });
+    }
+    return stats;
+}
+
+// Tallies real HBAR trade volume per token, so "top tokens" can be ranked
+// by actual activity instead of just recency.
+export async function fetchTopTokensByVolume() {
+    const stats = await fetchTokenMarketStats();
+    return Array.from(stats.entries())
+        .map(([tokenAddress, s]) => ({ tokenAddress, hbarTinybars: s.volumeTinybars }))
         .sort((a, b) => (a.hbarTinybars < b.hbarTinybars ? 1 : a.hbarTinybars > b.hbarTinybars ? -1 : 0));
 }
 

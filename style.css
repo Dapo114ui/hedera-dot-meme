@@ -308,11 +308,41 @@ body {
 
 .markets-header {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: flex-end;
+    gap: 1rem;
     margin-bottom: 2rem;
     padding-bottom: 1rem;
     border-bottom: 1px solid var(--border-color);
+}
+
+.markets-search {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--surface-dark);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 0.5rem 1rem;
+    color: var(--text-secondary);
+    flex: 1;
+    min-width: 200px;
+    max-width: 320px;
+}
+
+.markets-search input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.9rem;
+    width: 100%;
+}
+
+.markets-search input::placeholder {
+    color: var(--text-secondary);
 }
 
 .markets-title {
