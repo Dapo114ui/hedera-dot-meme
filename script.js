@@ -321,6 +321,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
+    // Mobile nav menu toggle
+    const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+    const navLinksEl = document.querySelector('.nav-links');
+    if (mobileMenuToggle && navLinksEl) {
+        mobileMenuToggle.addEventListener('click', () => {
+            navLinksEl.classList.toggle('mobile-open');
+        });
+        navLinksEl.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', () => navLinksEl.classList.remove('mobile-open'));
+        });
+    }
+
     // Explicitly bind the launch submit button
     const launchSubmitBtnElem = document.querySelector('.launch-submit-btn');
     if (launchSubmitBtnElem) {

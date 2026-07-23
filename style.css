@@ -96,6 +96,17 @@ body {
     color: var(--text-primary);
 }
 
+.mobile-menu-toggle {
+    display: none;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    padding: 0.5rem;
+    align-items: center;
+    justify-content: center;
+}
+
 .nav-icon {
     color: inherit;
 }
@@ -479,11 +490,43 @@ body {
     .hero-subtitle {
         font-size: 1.1rem;
     }
-    .nav-links {
-        display: none;
-    }
     .navbar {
         padding: 1rem 1.5rem;
+    }
+    .mobile-menu-toggle {
+        display: flex;
+    }
+    .nav-links {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        background: rgba(11, 12, 12, 0.97);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border-color);
+        padding: 0.5rem 1.5rem 1rem;
+        z-index: 99;
+    }
+    .nav-links.mobile-open {
+        display: flex;
+    }
+    .nav-links .nav-link {
+        padding: 0.85rem 0;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .nav-links .nav-link:last-child {
+        border-bottom: none;
+    }
+    .token-stats-row {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .leaderboard-grid {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
     }
 }
 
