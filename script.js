@@ -456,14 +456,45 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
 
             console.log("Creating Token with SDK...");
-            const mjToken = await client.createToken({
-                name: name,
-                symbol: symbol,
-                memo: memo
-            }, {
-                amount: 500000000n // 5 HBAR in tinybars to act as initial buy buffer and prevent OVERFLOW(17)
-            });
-            
+            // The token-creation fee the memejob contract forwards to Hedera's
+            // HTS precompile is the exchange-rate precompile's exact $1
+            // equivalent, with no buffer. Hedera flips its active exchange rate
+            // on an hourly boundary, so whenever it ticks between the fee quote
+            // and execution the required fee edges just above what was sent and
+            // the network rejects the (unsubmitted, so free) transaction with
+            // INSUFFICIENT_TX_FEE - surfaced by the wallet as the generic
+            // -32000 "Transaction failed". It's transient (~50/50 at the
+            // boundary) and not fixable by sending more value (the contract
+            // only forwards its computed fee to the precompile; extra msg.value
+            // never reaches it). So retry a few times before giving up.
+            const isTransientFeeError = (err) => {
+                const msg = (err?.message || '') + (err?.details || '') + JSON.stringify(err?.cause || '');
+                return err?.code === -32000 ||
+                    /INSUFFICIENT_TX_FEE|Transaction failed|Missing or invalid parameters/i.test(msg);
+            };
+            const MAX_LAUNCH_ATTEMPTS = 4;
+            let mjToken;
+            for (let attempt = 1; attempt <= MAX_LAUNCH_ATTEMPTS; attempt++) {
+                try {
+                    mjToken = await client.createToken({
+                        name: name,
+                        symbol: symbol,
+                        memo: memo
+                    }, {
+                        amount: 500000000n // 5 HBAR in tinybars to act as initial buy buffer and prevent OVERFLOW(17)
+                    });
+                    break;
+                } catch (err) {
+                    if (attempt < MAX_LAUNCH_ATTEMPTS && isTransientFeeError(err)) {
+                        console.warn(`Launch attempt ${attempt} hit a transient Hedera fee rejection, retrying...`, err?.message);
+                        btn.innerHTML = `<span>Network busy, retrying (${attempt + 1}/${MAX_LAUNCH_ATTEMPTS})...</span>`;
+                        await new Promise(r => setTimeout(r, 1500));
+                        continue;
+                    }
+                    throw err;
+                }
+            }
+
             console.log("Token Created!", mjToken.tokenId);
             const tokenIdStr = mjToken.tokenId.toString();
             const parts = tokenIdStr.split('.');
@@ -588,7 +619,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             } catch (err) {
                 console.error("Native Launch Error:", err);
-                alert(`Launch Failed: ${err.message || "User rejected or wallet error"}`);
+                const isFeeReject = err?.code === -32000 ||
+                    /INSUFFICIENT_TX_FEE|Transaction failed|Missing or invalid parameters/i.test(
+                        (err?.message || '') + JSON.stringify(err?.cause || '')
+                    );
+                if (isFeeReject) {
+                    // Transient Hedera testnet exchange-rate fee rejection - no
+                    // HBAR was spent (rejected before submission). Be honest and
+                    // actionable rather than dumping the raw viem error.
+                    alert("Launch didn't go through this time - Hedera testnet briefly rejected the token-creation fee (a known exchange-rate timing issue on testnet). No HBAR was spent. Please click Launch Meme again; it usually succeeds within a try or two.");
+                } else if (/user rejected|rejected the request|action_rejected/i.test(err?.message || '')) {
+                    alert("Launch cancelled - you rejected the transaction in your wallet.");
+                } else {
+                    alert(`Launch Failed: ${err.message || "User rejected or wallet error"}`);
+                }
             } finally {
                 try {
                     // If it succeeded, the modal handles button reset. 
