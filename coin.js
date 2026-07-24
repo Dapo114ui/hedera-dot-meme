@@ -613,7 +613,10 @@ function setupTradeInterface(tokenAddress) {
         };
     });
 
-    const percentBtns = document.querySelectorAll('.percent-btns button');
+    // .max-btn lives in .input-wrapper, a sibling of .percent-btns, not
+    // inside it - ".percent-btns button" alone never matched it, so MAX
+    // had no click handler despite the logic below already expecting it.
+    const percentBtns = document.querySelectorAll('.percent-btns button, .max-btn');
     percentBtns.forEach(btn => {
         btn.onclick = () => {
             let balanceStr = currentMode === 'buy' ? window.currentHbarBalance : window.currentTokenBalance;
