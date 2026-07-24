@@ -25,27 +25,17 @@
 // eth_sendTransaction makes that retry a harmless no-op, so whatever
 // actually caused the transaction to fail is what reaches the user.
 //
-// With that masking gone, the real failure turned out to be a gas limit
-// problem: the SDK hardcodes gas: 400000n for token creation (memeJob),
-// which is LESS than the 750000n it hardcodes for plain HTS associate/
-// approve calls, even though creating a brand new HTS token is a heavier
-// operation than either of those. There's no public option to raise it
-// from our code either, so we bump the gas field on outgoing
-// eth_sendTransaction calls up to a safe floor when the SDK's requested
-// limit is lower - unused gas on Hedera (as on Ethereum) is simply not
-// spent, so this only removes headroom problems, it doesn't cost more.
-const MIN_SAFE_GAS = 1000000n;
-
-function withSafeGasFloor(tx) {
-    if (!tx || typeof tx.gas !== 'string') return tx;
-    try {
-        if (BigInt(tx.gas) >= MIN_SAFE_GAS) return tx;
-    } catch {
-        return tx;
-    }
-    return { ...tx, gas: '0x' + MIN_SAFE_GAS.toString(16) };
-}
-
+// NOTE on gas: an earlier version of this file bumped the SDK's gas limit,
+// on the theory that the "Transaction failed" rejections were out-of-gas.
+// That was wrong and has been removed. A successful launch's receipt showed
+// only ~382k gas actually used, which fits the SDK's hardcoded 400k limit
+// fine. Worse, raising the limit costs real money on Hedera: the network
+// refunds at most 20% of unused gas (maxRefundPercentOfGasLimit), so a
+// larger limit is charged at ~80% of the limit regardless of usage, and
+// that inflated fee - reserved up front against the payer's balance
+// together with the ~19 HBAR call value - is what actually triggered the
+// INSUFFICIENT_PAYER_BALANCE rejections HashPack reports as "Transaction
+// failed". We now leave the SDK's gas untouched.
 export function wrapProviderForLegacyFees(provider) {
     if (!provider || typeof provider.request !== 'function') return provider;
 
@@ -65,32 +55,8 @@ export function wrapProviderForLegacyFees(provider) {
                             reward: Array(blockCount).fill(['0x0'])
                         };
                     }
-                    if (args?.method === 'eth_sendTransaction' && args.params?.[0]) {
-                        const bumpedTx = withSafeGasFloor(args.params[0]);
-                        console.log('[provider-fee-fix] eth_sendTransaction gas:', args.params[0].gas, '->', bumpedTx.gas, 'value:', bumpedTx.value);
-                        try {
-                            return await target.request({
-                                ...args,
-                                params: [bumpedTx, ...args.params.slice(1)]
-                            });
-                        } catch (e) {
-                            console.error('[provider-fee-fix] eth_sendTransaction raw provider error:', e);
-                            throw e;
-                        }
-                    }
                     if (args?.method === 'wallet_sendTransaction') {
-                        const bumpedTx = args.params?.[0] ? withSafeGasFloor(args.params[0]) : undefined;
-                        console.log('[provider-fee-fix] wallet_sendTransaction forwarding as eth_sendTransaction, gas:', args.params?.[0]?.gas, '->', bumpedTx?.gas);
-                        try {
-                            return await target.request({
-                                ...args,
-                                method: 'eth_sendTransaction',
-                                params: bumpedTx ? [bumpedTx, ...args.params.slice(1)] : args.params
-                            });
-                        } catch (e) {
-                            console.error('[provider-fee-fix] wallet_sendTransaction (forwarded) raw provider error:', e);
-                            throw e;
-                        }
+                        return target.request({ ...args, method: 'eth_sendTransaction' });
                     }
                     return target.request(args);
                 };
