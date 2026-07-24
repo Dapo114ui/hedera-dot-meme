@@ -462,17 +462,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             // on an hourly boundary, so whenever it ticks between the fee quote
             // and execution the required fee edges just above what was sent and
             // the network rejects the (unsubmitted, so free) transaction with
-            // INSUFFICIENT_TX_FEE - surfaced by the wallet as the generic
-            // -32000 "Transaction failed". It's transient (~50/50 at the
-            // boundary) and not fixable by sending more value (the contract
-            // only forwards its computed fee to the precompile; extra msg.value
-            // never reaches it). So retry a few times before giving up.
-            const isTransientFeeError = (err) => {
+            // INSUFFICIENT_TX_FEE. HashPack surfaces this same rejection
+            // inconsistently - sometimes as -32000 "Transaction failed",
+            // sometimes as 4100 "Unauthorized" (confirmed against the network:
+            // the underlying eth_estimateGas flips OK/revert ~50/50 at the
+            // boundary). It's transient and not fixable by sending more value
+            // (the contract only forwards its computed fee to the precompile;
+            // extra msg.value never reaches it), so retry a few times.
+            //
+            // A genuine user rejection (EIP-1193 4001) is NOT retried - that's
+            // the user deliberately declining, and re-prompting would be wrong.
+            const isRetryableLaunchError = (err) => {
+                if (err?.code === 4001) return false; // user rejected - respect it
                 const msg = (err?.message || '') + (err?.details || '') + JSON.stringify(err?.cause || '');
-                return err?.code === -32000 ||
-                    /INSUFFICIENT_TX_FEE|Transaction failed|Missing or invalid parameters/i.test(msg);
+                if (/user rejected|user denied|rejected the request|action_rejected/i.test(msg)) return false;
+                return err?.code === -32000 || err?.code === 4100 ||
+                    /INSUFFICIENT_TX_FEE|Transaction failed|Missing or invalid parameters|Unauthorized|not been authorized/i.test(msg);
             };
-            const MAX_LAUNCH_ATTEMPTS = 4;
+            const MAX_LAUNCH_ATTEMPTS = 5;
             let mjToken;
             for (let attempt = 1; attempt <= MAX_LAUNCH_ATTEMPTS; attempt++) {
                 try {
@@ -485,8 +492,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                     break;
                 } catch (err) {
-                    if (attempt < MAX_LAUNCH_ATTEMPTS && isTransientFeeError(err)) {
-                        console.warn(`Launch attempt ${attempt} hit a transient Hedera fee rejection, retrying...`, err?.message);
+                    if (attempt < MAX_LAUNCH_ATTEMPTS && isRetryableLaunchError(err)) {
+                        console.warn(`Launch attempt ${attempt} hit a transient Hedera rejection (${err?.code || '?'}: ${err?.shortMessage || err?.message}), retrying...`);
                         btn.innerHTML = `<span>Network busy, retrying (${attempt + 1}/${MAX_LAUNCH_ATTEMPTS})...</span>`;
                         await new Promise(r => setTimeout(r, 1500));
                         continue;
@@ -619,17 +626,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             } catch (err) {
                 console.error("Native Launch Error:", err);
-                const isFeeReject = err?.code === -32000 ||
-                    /INSUFFICIENT_TX_FEE|Transaction failed|Missing or invalid parameters/i.test(
-                        (err?.message || '') + JSON.stringify(err?.cause || '')
-                    );
-                if (isFeeReject) {
-                    // Transient Hedera testnet exchange-rate fee rejection - no
-                    // HBAR was spent (rejected before submission). Be honest and
-                    // actionable rather than dumping the raw viem error.
-                    alert("Launch didn't go through this time - Hedera testnet briefly rejected the token-creation fee (a known exchange-rate timing issue on testnet). No HBAR was spent. Please click Launch Meme again; it usually succeeds within a try or two.");
-                } else if (/user rejected|rejected the request|action_rejected/i.test(err?.message || '')) {
+                const msg = (err?.message || '') + JSON.stringify(err?.cause || '');
+                const userRejected = err?.code === 4001 || /user rejected|user denied|rejected the request|action_rejected/i.test(msg);
+                const transientReject = !userRejected && (
+                    err?.code === -32000 || err?.code === 4100 ||
+                    /INSUFFICIENT_TX_FEE|Transaction failed|Missing or invalid parameters|Unauthorized|not been authorized/i.test(msg)
+                );
+                if (userRejected) {
                     alert("Launch cancelled - you rejected the transaction in your wallet.");
+                } else if (transientReject) {
+                    // Transient Hedera testnet rejection (exchange-rate fee timing,
+                    // reported by HashPack as either "Transaction failed" or
+                    // "Unauthorized"). Nothing was submitted, so no HBAR was spent.
+                    // Already auto-retried several times before landing here.
+                    alert("Launch didn't go through after several tries - Hedera testnet is intermittently rejecting the token-creation fee right now (a known testnet exchange-rate timing issue). No HBAR was spent. Please wait a moment and click Launch Meme again. If it keeps failing, disconnect and reconnect your wallet, then retry.");
                 } else {
                     alert(`Launch Failed: ${err.message || "User rejected or wallet error"}`);
                 }
