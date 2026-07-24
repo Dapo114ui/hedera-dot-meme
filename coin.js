@@ -471,18 +471,31 @@ function setupTradeInterface(tokenAddress) {
                 }
             }
 
-            if (window.ethereum) {
-                const ethProvider = new ethers.BrowserProvider(window.ethereum);
-                const signer = await ethProvider.getSigner();
-                const userAddress = await signer.getAddress();
-                
-                const erc20ABI = ["function balanceOf(address owner) view returns (uint256)"];
-                const tokenContract = new ethers.Contract(tokenAddress, erc20ABI, provider);
-                const balance = await tokenContract.balanceOf(userAddress);
-                window.currentTokenBalance = ethers.formatUnits(balance, 8);
-                
-                if (currentMode === 'sell') {
-                    document.getElementById('trade-balance').textContent = `${window.currentTokenBalance} Tokens`;
+            // Was gated on window.ethereum directly, which HashPack's
+            // WalletConnect-based connection (window.getUniversalProvider(),
+            // the same source used everywhere else in this file, e.g. the
+            // trade submit handler below) doesn't necessarily populate - so
+            // this silently never ran for anyone connected that way, leaving
+            // the sell-tab balance stuck at "0 Tokens" regardless of real
+            // holdings. balanceOf is a read, so no signer is needed - just
+            // the already-connected account address.
+            const walletProvider = typeof window.getUniversalProvider === 'function' ? await window.getUniversalProvider() : window.ethereum;
+            if (walletProvider) {
+                try {
+                    const accounts = await walletProvider.request({ method: 'eth_accounts' });
+                    const userAddress = accounts?.[0];
+                    if (userAddress) {
+                        const erc20ABI = ["function balanceOf(address owner) view returns (uint256)"];
+                        const tokenContract = new ethers.Contract(tokenAddress, erc20ABI, provider);
+                        const balance = await tokenContract.balanceOf(userAddress);
+                        window.currentTokenBalance = ethers.formatUnits(balance, 8);
+
+                        if (currentMode === 'sell') {
+                            document.getElementById('trade-balance').textContent = `${window.currentTokenBalance} Tokens`;
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Could not fetch connected account for token balance", e);
                 }
             }
         } catch(e) {
