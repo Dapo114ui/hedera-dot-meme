@@ -14,9 +14,26 @@ const TREASURY_SHARE = 0.01; // 1% of total supply
 const MAX_HBAR_TINYBARS = BigInt(Math.round((Number(process.env.TREASURY_BUY_MAX_HBAR) || 50) * 1e8));
 const MAX_TOKEN_AGE_MS = 10 * 60 * 1000; // only act on tokens created in the last 10 minutes
 
+export const config = {
+    maxDuration: 30 // headroom for the mirror node retry loop below plus the actual buy transaction
+};
+
 function hederaIdToEvmAddress(hederaId) {
     const num = parseInt(hederaId.split('.')[2], 10);
     return '0x' + '0'.repeat(24) + num.toString(16).padStart(16, '0');
+}
+
+// The mirror node lags a few seconds behind consensus finality, but this
+// runs immediately after the token's creation transaction resolves - so
+// the very first lookup routinely 404s even though the token is real and
+// final. Retry with backoff instead of failing on that expected delay.
+async function fetchTokenInfoWithRetry(tokenId, attempts = 6, delayMs = 2000) {
+    for (let i = 0; i < attempts; i++) {
+        const res = await fetch(`${MIRROR_BASE}/api/v1/tokens/${tokenId}`);
+        if (res.ok) return res.json();
+        if (i < attempts - 1) await new Promise(r => setTimeout(r, delayMs));
+    }
+    throw new Error('Token not found on mirror node');
 }
 
 // Binary-searches the router's forward-only getAmountOut (no reverse quote
@@ -76,9 +93,7 @@ export default async function handler(req, res) {
         }
 
         // Sanity: only act on tokens that were genuinely just created
-        const tokenInfoRes = await fetch(`${MIRROR_BASE}/api/v1/tokens/${tokenId}`);
-        if (!tokenInfoRes.ok) throw new Error('Token not found on mirror node');
-        const tokenInfo = await tokenInfoRes.json();
+        const tokenInfo = await fetchTokenInfoWithRetry(tokenId);
 
         const createdMs = parseFloat(tokenInfo.created_timestamp) * 1000;
         if (!createdMs || Date.now() - createdMs > MAX_TOKEN_AGE_MS) {

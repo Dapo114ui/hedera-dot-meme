@@ -517,7 +517,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 try {
                     const payload = {
                         token_address: newTokenAddress.toLowerCase(),
-                        creator_address: (await signer.getAddress()).toLowerCase(),
+                        creator_address: currentUserEvm.toLowerCase(),
                         name: name,
                         symbol: symbol,
                         image_url: finalDbImageUrl,
