@@ -22,6 +22,11 @@ export function evmAddressToHederaId(address) {
     return `0.0.${accountNum}`;
 }
 
+export function hederaIdToEvmAddress(hederaId) {
+    const num = parseInt(hederaId.split('.')[2], 10);
+    return '0x' + '0'.repeat(24) + num.toString(16).padStart(16, '0');
+}
+
 /**
  * Mirror node requires a bounded timestamp range for topic-filtered log
  * queries, and the memejob contract is shared across every token on the

@@ -2,7 +2,7 @@ import { Buffer } from 'buffer';
 import { supabase } from './supabase.js';
 import { formatUnits } from 'ethers';
 import { appkit } from './wallet.js';
-import { evmAddressToHederaId, fetchTopTokensByVolume, fetchTokenMarketStats } from './mirror-trades.js';
+import { evmAddressToHederaId, hederaIdToEvmAddress, fetchTopTokensByVolume, fetchTokenMarketStats } from './mirror-trades.js';
 import { isWatchlisted, toggleWatchlist } from './watchlist.js';
 import { wrapProviderForLegacyFees } from './provider-fee-fix.js';
 
@@ -447,8 +447,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             const chain = getChain('testnet');
             const universalProvider = await window.getUniversalProvider();
             if (!universalProvider) throw new Error("Wallet provider not initialized or not found.");
+            const wrappedProvider = wrapProviderForLegacyFees(universalProvider || window.ethereum);
             const adapter = createAdapter(EvmAdapter, {
-                ethereumProvider: wrapProviderForLegacyFees(universalProvider || window.ethereum)
+                ethereumProvider: wrappedProvider
             });
             const client = new MJClient(adapter, {
                 chain: chain,
@@ -581,13 +582,40 @@ document.addEventListener('DOMContentLoaded', async () => {
             const parts = tokenIdStr.split('.');
             let newTokenAddress = `0x000000000000000000000000${parseInt(parts[2]).toString(16).padStart(16, '0')}`;
 
-            // Fire-and-forget: treasury acquires 1% of supply server-side.
-            // Never blocks or fails the user's launch flow.
-            fetch('/api/treasury-buy', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tokenId: tokenIdStr })
-            }).catch(err => console.warn('Treasury buy request failed:', err));
+            // Platform launch fee: a flat 5 HBAR charged to the launcher,
+            // collected as a plain transfer straight to the treasury account
+            // right after the token itself is created. (We previously had the
+            // treasury spend its own HBAR to buy 1% of every new token's supply
+            // on the bonding curve - at current pricing that's ~120 HBAR spent
+            // per launch chasing tokens that are usually worthless, a losing
+            // model. A flat fee is guaranteed revenue instead of a bet.)
+            //
+            // The token is already live on-chain by this point, so a
+            // rejected/failed fee transfer is logged and skipped, never
+            // treated as a launch failure - the user already got what they
+            // came for.
+            const LAUNCH_FEE_HBAR = 5;
+            const treasuryAccountId = import.meta.env.VITE_TREASURY_ACCOUNT_ID;
+            if (treasuryAccountId && currentUserEvm) {
+                try {
+                    btn.innerHTML = `<span>Charging launch fee...</span>`;
+                    const treasuryEvmAddress = hederaIdToEvmAddress(treasuryAccountId);
+                    const feeWeibars = BigInt(Math.round(LAUNCH_FEE_HBAR * 1e8)) * 10n ** 10n;
+                    await wrappedProvider.request({
+                        method: 'eth_sendTransaction',
+                        params: [{
+                            from: currentUserEvm,
+                            to: treasuryEvmAddress,
+                            value: '0x' + feeWeibars.toString(16)
+                        }]
+                    });
+                    console.log(`Launch fee of ${LAUNCH_FEE_HBAR} HBAR sent to treasury.`);
+                } catch (feeErr) {
+                    console.warn('Launch fee transfer failed or was rejected - launch still succeeds:', feeErr);
+                }
+            } else {
+                console.warn('VITE_TREASURY_ACCOUNT_ID not configured - skipping launch fee.');
+            }
 
             btn.innerHTML = `<span>Finalizing...</span>`;
 
