@@ -2,7 +2,7 @@ import { Buffer } from 'buffer';
 import { supabase } from './supabase.js';
 import { formatUnits } from 'ethers';
 import { appkit } from './wallet.js';
-import { evmAddressToHederaId, hederaIdToEvmAddress, fetchTopTokensByVolume, fetchTokenMarketStats } from './mirror-trades.js';
+import { evmAddressToHederaId, resolveAccountEvmAddress, fetchTopTokensByVolume, fetchTokenMarketStats } from './mirror-trades.js';
 import { isWatchlisted, toggleWatchlist } from './watchlist.js';
 import { wrapProviderForLegacyFees } from './provider-fee-fix.js';
 
@@ -599,7 +599,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (treasuryAccountId && currentUserEvm) {
                 try {
                     btn.innerHTML = `<span>Charging launch fee...</span>`;
-                    const treasuryEvmAddress = hederaIdToEvmAddress(treasuryAccountId);
+                    // Must use the treasury account's real EVM alias (not the
+                    // long-zero form) - it has an ECDSA key, and Hedera's relay
+                    // rejects value transfers to the long-zero address for
+                    // accounts that already have a real alias.
+                    const treasuryEvmAddress = await resolveAccountEvmAddress(treasuryAccountId);
                     const feeWeibars = BigInt(Math.round(LAUNCH_FEE_HBAR * 1e8)) * 10n ** 10n;
                     await wrappedProvider.request({
                         method: 'eth_sendTransaction',

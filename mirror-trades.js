@@ -27,6 +27,31 @@ export function hederaIdToEvmAddress(hederaId) {
     return '0x' + '0'.repeat(24) + num.toString(16).padStart(16, '0');
 }
 
+// The long-zero address above is only valid for entities without a real
+// EVM alias (contracts, tokens, or accounts created without an ECDSA key).
+// An account that already has one (e.g. created via an EVM-compatible
+// wallet like HashPack) MUST be targeted by that real alias for value
+// transfers - sending to its long-zero form instead is rejected by
+// Hedera's JSON-RPC relay with INVALID_ALIAS_KEY (confirmed against
+// testnet: identical transfer succeeds to the alias, fails to long-zero).
+// So resolve the real alias from the mirror node when one exists, and
+// only fall back to the long-zero form for accounts that genuinely don't
+// have one.
+export async function resolveAccountEvmAddress(hederaId) {
+    try {
+        const res = await fetch(`${MIRROR_BASE}/api/v1/accounts/${hederaId}`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data.evm_address && /^0x[0-9a-fA-F]{40}$/.test(data.evm_address)) {
+                return data.evm_address;
+            }
+        }
+    } catch (e) {
+        console.warn(`Could not resolve real EVM alias for ${hederaId}, falling back to long-zero address`, e);
+    }
+    return hederaIdToEvmAddress(hederaId);
+}
+
 /**
  * Mirror node requires a bounded timestamp range for topic-filtered log
  * queries, and the memejob contract is shared across every token on the
