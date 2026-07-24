@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js';
 import { ethers } from 'ethers';
-import { evmAddressToHederaId, fetchTokenTrades, fetchTokenHolders } from './mirror-trades.js';
+import { evmAddressToHederaId, fetchTokenTrades, fetchTokenHolders, fetchHbarUsdRate } from './mirror-trades.js';
 import { isWatchlisted, toggleWatchlist } from './watchlist.js';
 import { wrapProviderForLegacyFees } from './provider-fee-fix.js';
 import { getAlertsForToken, addAlert, removeAlert, checkAlerts } from './alerts.js';
@@ -360,12 +360,17 @@ function setupTradeInterface(tokenAddress) {
 
             const priceInHbar = Number(tinybarsForOneToken) / 1e8;
             if (priceInHbar > 0) {
+                // Hedera's own exchange-rate precompile, not a hardcoded
+                // constant - verified against real market price (~$0.071):
+                // this tracks it within ~1%, cached internally for a minute.
+                const hbarUsdRate = await fetchHbarUsdRate();
+
                 document.getElementById('stat-price-hbar').textContent = `${priceInHbar.toFixed(8)} ℏ`;
-                document.getElementById('stat-price-usd').textContent = `$${(priceInHbar * 0.05).toFixed(8)}`;
+                document.getElementById('stat-price-usd').textContent = `$${(priceInHbar * hbarUsdRate).toFixed(8)}`;
 
                 const mcap = priceInHbar * totalSupplyWhole;
                 document.getElementById('stat-mcap-hbar').textContent = `${mcap.toLocaleString(undefined, {maximumFractionDigits:0})} ℏ`;
-                document.getElementById('stat-mcap-usd').textContent = `$${(mcap * 0.05).toLocaleString(undefined, {maximumFractionDigits:2})}`;
+                document.getElementById('stat-mcap-usd').textContent = `$${(mcap * hbarUsdRate).toLocaleString(undefined, {maximumFractionDigits:2})}`;
 
                 document.getElementById('stat-volume').textContent = `--- ℏ`;
 

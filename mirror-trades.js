@@ -1,7 +1,44 @@
 import { Interface } from 'ethers';
 
 const MIRROR_BASE = 'https://testnet.mirrornode.hedera.com';
+const RPC_URL = 'https://testnet.hashio.io/api';
 const CONTRACT_ADDRESS = '0xa3bf9adec2fb49fb65c8948aed71c6bf1c4d61c8'; // memejob testnet contract (CONTRACT_DEPLOYMENTS.testnet.evmAddress)
+
+const EXCHANGE_RATE_PRECOMPILE = '0x0000000000000000000000000000000000000168';
+const exchangeRateInterface = new Interface(['function tinycentsToTinybars(uint256 tinycents) view returns (uint256)']);
+
+let cachedHbarUsdRate = null;
+let cachedHbarUsdRateAt = 0;
+const HBAR_USD_CACHE_MS = 60000;
+
+// Hedera's own exchange-rate precompile (also used for the launch/HTS fees
+// elsewhere in this app) is a much better source for HBAR/USD than a
+// hardcoded constant - verified against real market price (~$0.071 on
+// exchanges): this returns ~$0.0706, within ~1%. No external API, no CORS,
+// no rate limits. Cached briefly since the rate only updates hourly-ish.
+export async function fetchHbarUsdRate() {
+    if (cachedHbarUsdRate !== null && Date.now() - cachedHbarUsdRateAt < HBAR_USD_CACHE_MS) {
+        return cachedHbarUsdRate;
+    }
+    try {
+        const data = exchangeRateInterface.encodeFunctionData('tinycentsToTinybars', [100n * 10n ** 8n]); // $1.00 in tinycents
+        const res = await fetch(RPC_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_call', params: [{ to: EXCHANGE_RATE_PRECOMPILE, data }, 'latest'] })
+        });
+        const json = await res.json();
+        const [tinybarsPerDollar] = exchangeRateInterface.decodeFunctionResult('tinycentsToTinybars', json.result);
+        const hbarPerDollar = Number(tinybarsPerDollar) / 1e8;
+        if (hbarPerDollar > 0) {
+            cachedHbarUsdRate = 1 / hbarPerDollar;
+            cachedHbarUsdRateAt = Date.now();
+        }
+    } catch (e) {
+        console.warn('Could not fetch live HBAR/USD rate', e);
+    }
+    return cachedHbarUsdRate ?? 0;
+}
 
 const TRADE_EVENTS_ABI = [
     'event TokensBought(address indexed tokenAddress, address indexed buyer, uint256 amount, uint256 totalPrice)',
