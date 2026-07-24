@@ -358,9 +358,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log("CRITICAL: Executing Native Launch via UniversalProvider v5.0", currentUserNative);
             const name = document.getElementById('tokenName')?.value || "My Awesome Meme";
             const symbol = document.getElementById('ticker')?.value || "$MEME";
-            const supplyInput = document.getElementById('initialSupply')?.value || "1000000000";
-            const cleanSupply = parseInt(supplyInput.replace(/,/g, '')) || 0;
-            
+
             const desc = document.getElementById('tokenDescription')?.value || "";
             const twitter = document.getElementById('socialTwitter')?.value || "";
             const telegram = document.getElementById('socialTelegram')?.value || "";

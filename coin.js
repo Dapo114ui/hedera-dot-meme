@@ -325,23 +325,48 @@ function setupTradeInterface(tokenAddress) {
     const provider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
     const routerContract = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, provider);
 
+    // Total supply is fixed by the memejob contract at creation time (every
+    // token mints the same amount) and never changes, so it's fetched once
+    // here rather than on every fetchStats() poll. Falls back to the
+    // contract's known fixed supply if the mirror node lookup fails.
+    let totalSupplyWhole = 750000000;
+    (async () => {
+        try {
+            const hederaId = evmAddressToHederaId(tokenAddress);
+            const res = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/tokens/${hederaId}`);
+            if (res.ok) {
+                const info = await res.json();
+                if (info.total_supply) {
+                    totalSupplyWhole = Number(info.total_supply) / (10 ** (info.decimals ?? 8));
+                }
+            }
+        } catch (e) {
+            console.warn('Could not fetch real total supply for market cap, using fixed default:', e);
+        }
+    })();
+
     async function fetchStats() {
         try {
-            // Get price: how many tokens 1 HBAR (10^8) buys. txType = 0 for buy
-            const oneHbar = ethers.parseUnits('1', 8);
-            const tokensForOneHbar = await routerContract.getAmountOut(tokenAddress, oneHbar, 0);
-            
-            const tokensAmount = Number(ethers.formatUnits(tokensForOneHbar, 8));
-            if (tokensAmount > 0) {
-                const priceInHbar = 1.0 / tokensAmount;
-                
+            // Price of exactly one whole token, in tinybars. getAmountOut's
+            // `amount` argument is a TOKEN quantity (not HBAR) for txType=0 -
+            // it returns how much HBAR is needed to buy that many tokens - so
+            // passing 1.0 token (in the token's own 8-decimal units) directly
+            // gives the price of one token, no inversion needed. (The previous
+            // version divided 1 by this value, which produced a wildly wrong
+            // price - e.g. 64,102 HBAR/token for a token that actually trades
+            // at ~0.0000156 HBAR/token; verified against the live contract.)
+            const oneToken = ethers.parseUnits('1', 8);
+            const tinybarsForOneToken = await routerContract.getAmountOut(tokenAddress, oneToken, 0);
+
+            const priceInHbar = Number(tinybarsForOneToken) / 1e8;
+            if (priceInHbar > 0) {
                 document.getElementById('stat-price-hbar').textContent = `${priceInHbar.toFixed(8)} ℏ`;
                 document.getElementById('stat-price-usd').textContent = `$${(priceInHbar * 0.05).toFixed(8)}`;
-                
-                const mcap = priceInHbar * 1000000000;
+
+                const mcap = priceInHbar * totalSupplyWhole;
                 document.getElementById('stat-mcap-hbar').textContent = `${mcap.toLocaleString(undefined, {maximumFractionDigits:0})} ℏ`;
                 document.getElementById('stat-mcap-usd').textContent = `$${(mcap * 0.05).toLocaleString(undefined, {maximumFractionDigits:2})}`;
-                
+
                 document.getElementById('stat-volume').textContent = `--- ℏ`;
 
                 const triggered = checkAlerts(tokenAddress, priceInHbar);
