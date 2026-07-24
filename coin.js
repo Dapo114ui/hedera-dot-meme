@@ -143,16 +143,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('coin-content').style.display = 'block';
 
         // 4. Load real trade history from mirror node logs, then render
-        // the chart and the trades table from the same data.
+        // the chart and the trades table from the same data. Refreshed
+        // periodically so the chart and activity list reflect new buys/
+        // sells while the page is open, not just a one-time snapshot from
+        // page load.
+        let applyTradesToChart = null;
         try {
             const trades = await fetchTokenTrades(tokenAddress);
-            initChart(trades);
+            applyTradesToChart = initChart(trades);
             renderTradesTable(trades);
         } catch (e) {
             console.error("Failed to load trade history:", e);
-            initChart([]);
+            applyTradesToChart = initChart([]);
             renderTradesTable([]);
         }
+
+        setInterval(async () => {
+            try {
+                const latestTrades = await fetchTokenTrades(tokenAddress);
+                applyTradesToChart?.(latestTrades);
+                renderTradesTable(latestTrades);
+            } catch (e) {
+                console.warn("Could not refresh trade activity:", e);
+            }
+        }, 15000);
 
         // 5. Load real holder distribution from mirror node
         try {
@@ -229,18 +243,32 @@ function initChart(trades) {
         borderVisible: false,
         wickUpColor: '#26a69a',
         wickDownColor: '#ef5350',
+        // Bonding-curve token prices sit around 0.00001-0.0001 HBAR. The
+        // default price format (precision: 2, minMove: 0.01) rounds all of
+        // that straight to 0.00, which is what made the chart render as a
+        // single collapsed bar instead of real candles.
+        priceFormat: {
+            type: 'price',
+            precision: 8,
+            minMove: 0.00000001,
+        },
     });
 
-    const data = buildCandles(trades);
-    if (data.length > 0) {
-        candlestickSeries.setData(data);
-    } else {
-        chartContainer.style.position = 'relative';
-        const emptyMsg = document.createElement('div');
-        emptyMsg.textContent = 'No trades yet';
-        emptyMsg.style.cssText = 'position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#94a3b8; pointer-events:none;';
-        chartContainer.appendChild(emptyMsg);
-    }
+    chartContainer.style.position = 'relative';
+    const emptyMsg = document.createElement('div');
+    emptyMsg.textContent = 'No trades yet';
+    emptyMsg.style.cssText = 'position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#94a3b8; pointer-events:none;';
+
+    const applyTrades = (currentTrades) => {
+        const data = buildCandles(currentTrades);
+        if (data.length > 0) {
+            candlestickSeries.setData(data);
+            emptyMsg.remove();
+        } else if (!chartContainer.contains(emptyMsg)) {
+            chartContainer.appendChild(emptyMsg);
+        }
+    };
+    applyTrades(trades);
 
     // Handle resize
     new ResizeObserver(entries => {
@@ -248,6 +276,8 @@ function initChart(trades) {
         const newRect = entries[0].contentRect;
         chart.applyOptions({ height: newRect.height, width: newRect.width });
     }).observe(chartContainer);
+
+    return applyTrades;
 }
 
 function timeAgo(timestampSeconds) {
@@ -303,6 +333,44 @@ function renderHoldersTable(holders) {
         `;
         holdersBody.appendChild(tr);
     });
+}
+
+// Floor on buy size - mainly a spam/wash-trading guard for the points
+// system planned on top of transaction activity (a per-trade minimum
+// doesn't itself drive more trades, but it stops the count being farmed
+// with near-zero trades). Easy to tune.
+const MIN_BUY_HBAR = 1;
+
+// The router's getAmountOut always takes a TOKEN quantity and returns its
+// HBAR cost (txType 0) or HBAR proceeds (txType 1) - there is no "give me
+// tokens for this much HBAR" query on-chain, and buyJob itself is called
+// with a token quantity too (the SDK's buy() computes and attaches the
+// HBAR cost automatically). So "I want to spend X HBAR" has to be solved
+// by searching for the largest token quantity whose cost doesn't exceed X
+// - cost is monotonically increasing in quantity on a bonding curve, so a
+// bounded binary search finds it in a handful of calls. Verified against
+// the live contract: budgeting 5 HBAR correctly resolves to ~320,085
+// tokens (not the ~5 tokens a naive "amount == HBAR" reading would buy).
+async function findTokenAmountForHbarBudget(routerContract, tokenAddress, hbarBudgetTinybars) {
+    if (hbarBudgetTinybars <= 0n) return 0n;
+    const oneTokenCost = await routerContract.getAmountOut(tokenAddress, 100000000n, 0);
+    if (oneTokenCost <= 0n) return 0n;
+
+    let hi = (hbarBudgetTinybars * 100000000n) / oneTokenCost * 2n;
+    if (hi <= 0n) hi = 100000000n;
+    let hiCost = await routerContract.getAmountOut(tokenAddress, hi, 0);
+    for (let guard = 0; hiCost <= hbarBudgetTinybars && guard < 10; guard++) {
+        hi *= 2n;
+        hiCost = await routerContract.getAmountOut(tokenAddress, hi, 0);
+    }
+
+    let lo = 0n;
+    for (let i = 0; i < 30 && hi - lo > 1n; i++) {
+        const mid = (lo + hi) / 2n;
+        const cost = await routerContract.getAmountOut(tokenAddress, mid, 0);
+        if (cost <= hbarBudgetTinybars) lo = mid; else hi = mid;
+    }
+    return lo;
 }
 
 function setupTradeInterface(tokenAddress) {
@@ -455,6 +523,8 @@ function setupTradeInterface(tokenAddress) {
         });
     }
 
+    const labelReceive = document.getElementById('label-receive');
+
     async function updateReceiveAmount() {
         const amount = parseFloat(tradeAmount.value);
         if (!amount || amount <= 0) {
@@ -463,14 +533,35 @@ function setupTradeInterface(tokenAddress) {
         }
 
         try {
-            const amountIn = ethers.parseUnits(amount.toString(), 8); // Assuming 8 decimals for HBAR and Token
-            let amountOut;
             if (currentMode === 'buy') {
-                amountOut = await routerContract.getAmountOut(tokenAddress, amountIn, 0);
+                if (amount < MIN_BUY_HBAR) {
+                    tradeWarning.textContent = `Minimum buy is ${MIN_BUY_HBAR} HBAR.`;
+                    tradeWarning.style.display = 'block';
+                } else {
+                    tradeWarning.style.display = 'none';
+                }
+
+                // "Amount to pay" is HBAR here, but getAmountOut only ever
+                // takes a TOKEN quantity (see findTokenAmountForHbarBudget
+                // above) - so a live per-keystroke preview can't call it
+                // directly with the HBAR figure. Approximate via the current
+                // spot price (cost of exactly one token) instead; the exact
+                // amount is resolved with a real binary search at submit time.
+                labelReceive.textContent = 'Amount to receive (approx.)';
+                const hbarBudgetTinybars = ethers.parseUnits(amount.toString(), 8);
+                const oneTokenCost = await routerContract.getAmountOut(tokenAddress, 100000000n, 0);
+                if (oneTokenCost > 0n) {
+                    const approxTokens = (hbarBudgetTinybars * 100000000n) / oneTokenCost;
+                    tradeReceive.value = ethers.formatUnits(approxTokens, 8);
+                } else {
+                    tradeReceive.value = '';
+                }
             } else {
-                amountOut = await routerContract.getAmountOut(tokenAddress, amountIn, 1);
+                labelReceive.textContent = 'Amount to receive';
+                const amountIn = ethers.parseUnits(amount.toString(), 8); // sell amount is already in tokens
+                const amountOut = await routerContract.getAmountOut(tokenAddress, amountIn, 1);
+                tradeReceive.value = ethers.formatUnits(amountOut, 8);
             }
-            tradeReceive.value = ethers.formatUnits(amountOut, 8);
         } catch(e) {
             tradeReceive.value = '';
         }
@@ -503,6 +594,9 @@ function setupTradeInterface(tokenAddress) {
         };
     });
 
+    const tradeWarning = document.getElementById('trade-warning');
+    const labelPay = document.getElementById('label-pay');
+
     tabBuy.onclick = () => {
         currentMode = 'buy';
         tabBuy.classList.add('active');
@@ -510,6 +604,8 @@ function setupTradeInterface(tokenAddress) {
         tradeSubmitBtn.textContent = 'Buy Token';
         tradeSubmitBtn.style.background = '#10b981';
         document.getElementById('trade-balance').textContent = window.currentHbarBalance ? `${window.currentHbarBalance} HBAR` : '0 HBAR';
+        tradeAmount.min = String(MIN_BUY_HBAR);
+        labelPay.textContent = `Amount to pay (min. ${MIN_BUY_HBAR} HBAR)`;
         updateReceiveAmount();
     };
 
@@ -520,8 +616,15 @@ function setupTradeInterface(tokenAddress) {
         tradeSubmitBtn.textContent = 'Sell Token';
         tradeSubmitBtn.style.background = '#ef4444';
         document.getElementById('trade-balance').textContent = window.currentTokenBalance ? `${window.currentTokenBalance} Tokens` : '0 Tokens';
+        tradeAmount.min = '0';
+        labelPay.textContent = 'Amount to pay';
+        tradeWarning.style.display = 'none';
         updateReceiveAmount();
     };
+
+    // Buy is the default active tab on load, but its label/min weren't set
+    // until a tab was actually clicked - initialize that state now.
+    tabBuy.onclick();
 
     tradeSubmitBtn.onclick = async () => {
         const universalProvider = typeof window.getUniversalProvider === 'function' ? await window.getUniversalProvider() : window.ethereum;
@@ -533,6 +636,11 @@ function setupTradeInterface(tokenAddress) {
         const amount = parseFloat(tradeAmount.value);
         if (!amount || amount <= 0) {
             alert("Enter a valid amount!");
+            return;
+        }
+
+        if (currentMode === 'buy' && amount < MIN_BUY_HBAR) {
+            alert(`Minimum buy is ${MIN_BUY_HBAR} HBAR.`);
             return;
         }
 
@@ -562,15 +670,26 @@ function setupTradeInterface(tokenAddress) {
             console.log("Getting token instance from SDK...");
             const mjToken = await client.getToken(targetAddress);
 
-            const amountIn = ethers.parseUnits(amount.toString(), 8); // Always 8 decimals for Hedera native
-
             if (currentMode === 'buy') {
-                console.log("Buying via SDK with amount:", amountIn.toString());
+                // "Amount to pay" is HBAR the user wants to spend, but
+                // buy({amount}) - and the on-chain buyJob it calls - takes a
+                // TOKEN quantity, not HBAR (confirmed against the live
+                // contract). Resolve the token amount that actually costs
+                // (up to) the entered HBAR budget before buying.
+                tradeSubmitBtn.textContent = "Finding best price...";
+                const hbarBudgetTinybars = ethers.parseUnits(amount.toString(), 8);
+                const tokenAmount = await findTokenAmountForHbarBudget(routerContract, tokenAddress, hbarBudgetTinybars);
+                if (tokenAmount <= 0n) {
+                    throw new Error("Could not find a valid token amount for that HBAR budget.");
+                }
+                tradeSubmitBtn.textContent = "Confirm in wallet...";
+                console.log("Buying via SDK - HBAR budget:", hbarBudgetTinybars.toString(), "-> token amount:", tokenAmount.toString());
                 const result = await mjToken.buy({
-                    amount: amountIn
+                    amount: tokenAmount
                 });
                 console.log("Buy result:", result);
             } else {
+                const amountIn = ethers.parseUnits(amount.toString(), 8); // sell amount is already in tokens
                 console.log("Selling via SDK with amount:", amountIn.toString());
                 const result = await mjToken.sell({
                     amount: amountIn,
@@ -578,7 +697,7 @@ function setupTradeInterface(tokenAddress) {
                 });
                 console.log("Sell result:", result);
             }
-           
+
             alert(`SUCCESS! Successfully ${currentMode === 'buy' ? 'bought' : 'sold'} tokens.`);
             tradeAmount.value = '';
             tradeReceive.value = '';
