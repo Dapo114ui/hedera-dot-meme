@@ -456,32 +456,106 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
 
             console.log("Creating Token with SDK...");
-            // The token-creation fee the memejob contract forwards to Hedera's
-            // HTS precompile is the exchange-rate precompile's exact $1
-            // equivalent, with no buffer. Hedera flips its active exchange rate
-            // on an hourly boundary, so whenever it ticks between the fee quote
-            // and execution the required fee edges just above what was sent and
-            // the network rejects the (unsubmitted, so free) transaction with
-            // INSUFFICIENT_TX_FEE. HashPack surfaces this same rejection
-            // inconsistently - sometimes as -32000 "Transaction failed",
-            // sometimes as 4100 "Unauthorized" (confirmed against the network:
-            // the underlying eth_estimateGas flips OK/revert ~50/50 at the
-            // boundary). It's transient and not fixable by sending more value
-            // (the contract only forwards its computed fee to the precompile;
-            // extra msg.value never reaches it), so retry a few times.
-            //
-            // A genuine user rejection (EIP-1193 4001) is NOT retried - that's
-            // the user deliberately declining, and re-prompting would be wrong.
+            // WHY THIS IS INVOLVED: the memejob contract funds HTS token
+            // creation with the exchange-rate precompile's exact $1 equivalent
+            // (tinycentsToTinybars), no buffer. Hedera flips its active exchange
+            // rate on an hourly boundary, so at the boundary the fee required at
+            // execution edges just above what was sent and the contract reverts
+            // with INSUFFICIENT_TX_FEE. The wallet surfaces this inconsistently
+            // (-32000 "Transaction failed" or 4100 "Unauthorized"). We can't fix
+            // the third-party contract and can't buffer it (extra msg.value
+            // never reaches the precompile). BUT the exact same rejection is
+            // reproducible for free from the browser via eth_estimateGas - no
+            // wallet, no HBAR - so rather than pop the wallet and let it fail,
+            // we silently poll until the network is accepting the fee, THEN open
+            // the wallet once, at a moment the launch is very likely to land.
+            const RPC_URL = 'https://testnet.hashio.io/api';
+            const EXCHANGE_RATE_PRECOMPILE = '0x0000000000000000000000000000000000000168';
+            const contractEvmAddress = CONTRACT_DEPLOYMENTS.testnet.evmAddress;
+
+            let encodeFunctionData;
+            try {
+                ({ encodeFunctionData } = await import('viem'));
+            } catch (e) {
+                console.warn('viem unavailable; skipping fee pre-flight', e);
+            }
+
+            const rpc = async (method, params) => {
+                const r = await fetch(RPC_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })
+                });
+                return r.json();
+            };
+
+            // Poll eth_estimateGas (free, no wallet) until the network accepts
+            // the create-token fee twice in a row - which guards against opening
+            // the wallet right on a flapping boundary. Returns when settled, or
+            // after the time budget (in which case we proceed anyway and lean on
+            // the retry net below). Never throws - pre-flight is best-effort.
+            const waitForFeeWindow = async () => {
+                if (!encodeFunctionData || !currentUserEvm) return;
+                let launchData, feeData;
+                try {
+                    launchData = encodeFunctionData({
+                        abi: [{ name: 'memeJob', type: 'function', stateMutability: 'payable', inputs: [
+                            { name: 'name', type: 'string' }, { name: 'symbol', type: 'string' },
+                            { name: 'memo', type: 'string' }, { name: 'referrer', type: 'address' },
+                            { name: 'amount', type: 'uint256' }, { name: 'distributeRewards', type: 'bool' }
+                        ], outputs: [{ type: 'address' }] }],
+                        functionName: 'memeJob',
+                        args: [name, symbol, memo, '0x0000000000000000000000000000000000000000', 500000000n, true]
+                    });
+                    feeData = encodeFunctionData({
+                        abi: [{ name: 'tinycentsToTinybars', type: 'function', stateMutability: 'view',
+                            inputs: [{ name: 'tinycents', type: 'uint256' }], outputs: [{ type: 'uint256' }] }],
+                        functionName: 'tinycentsToTinybars',
+                        args: [100n * 10n ** 8n]
+                    });
+                } catch (e) {
+                    console.warn('Could not encode launch calldata for pre-flight', e);
+                    return;
+                }
+                const budgetMs = 45000;
+                const start = Date.now();
+                let greens = 0;
+                while (Date.now() - start < budgetMs) {
+                    try {
+                        const feeRes = await rpc('eth_call', [{ to: EXCHANGE_RATE_PRECOMPILE, data: feeData }, 'latest']);
+                        const creationFee = BigInt(feeRes.result);
+                        const value = '0x' + ((creationFee + 500000000n) * 10n ** 10n).toString(16);
+                        const est = await rpc('eth_estimateGas', [{ from: currentUserEvm, to: contractEvmAddress, value, data: launchData }]);
+                        if (est.result && !est.error) {
+                            if (++greens >= 2) return;
+                        } else {
+                            greens = 0;
+                        }
+                    } catch (e) {
+                        greens = 0;
+                    }
+                    await new Promise(r => setTimeout(r, 1200));
+                }
+            };
+
+            // Safety net: even after a green pre-flight the rate can flip in the
+            // seconds it takes to approve, so a retry still backs it up. A
+            // genuine user rejection (4001) is never retried - re-prompting
+            // someone who deliberately declined would be wrong.
             const isRetryableLaunchError = (err) => {
-                if (err?.code === 4001) return false; // user rejected - respect it
+                if (err?.code === 4001) return false;
                 const msg = (err?.message || '') + (err?.details || '') + JSON.stringify(err?.cause || '');
                 if (/user rejected|user denied|rejected the request|action_rejected/i.test(msg)) return false;
                 return err?.code === -32000 || err?.code === 4100 ||
                     /INSUFFICIENT_TX_FEE|Transaction failed|Missing or invalid parameters|Unauthorized|not been authorized/i.test(msg);
             };
-            const MAX_LAUNCH_ATTEMPTS = 5;
+
+            const MAX_LAUNCH_ATTEMPTS = 4;
             let mjToken;
             for (let attempt = 1; attempt <= MAX_LAUNCH_ATTEMPTS; attempt++) {
+                btn.innerHTML = `<span>Checking network fee...</span>`;
+                await waitForFeeWindow();
+                btn.innerHTML = `<span>Approve in your wallet...</span>`;
                 try {
                     mjToken = await client.createToken({
                         name: name,
@@ -493,7 +567,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     break;
                 } catch (err) {
                     if (attempt < MAX_LAUNCH_ATTEMPTS && isRetryableLaunchError(err)) {
-                        console.warn(`Launch attempt ${attempt} hit a transient Hedera rejection (${err?.code || '?'}: ${err?.shortMessage || err?.message}), retrying...`);
+                        console.warn(`Launch attempt ${attempt} hit a transient Hedera rejection (${err?.code || '?'}: ${err?.shortMessage || err?.message}), re-checking fee and retrying...`);
                         btn.innerHTML = `<span>Network busy, retrying (${attempt + 1}/${MAX_LAUNCH_ATTEMPTS})...</span>`;
                         await new Promise(r => setTimeout(r, 1500));
                         continue;
