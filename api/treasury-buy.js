@@ -36,29 +36,6 @@ async function fetchTokenInfoWithRetry(tokenId, attempts = 6, delayMs = 2000) {
     throw new Error('Token not found on mirror node');
 }
 
-// Binary-searches the router's forward-only getAmountOut (no reverse quote
-// exists) for the minimum HBAR input whose token output meets the target.
-async function findHbarForTargetTokens(routerContract, memeAddress, targetTokens, maxHbarTinybars) {
-    let lo = 0n;
-    let hi = maxHbarTinybars;
-
-    const hiOut = await routerContract.getAmountOut(memeAddress, hi, 0);
-    if (hiOut < targetTokens) {
-        throw new Error(`Target unreachable within max spend cap (cap yields ${hiOut}, need ${targetTokens})`);
-    }
-
-    for (let i = 0; i < 30 && hi - lo > 1n; i++) {
-        const mid = (lo + hi) / 2n;
-        const out = await routerContract.getAmountOut(memeAddress, mid, 0);
-        if (out < targetTokens) {
-            lo = mid + 1n;
-        } else {
-            hi = mid;
-        }
-    }
-    return hi;
-}
-
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
@@ -103,13 +80,32 @@ export default async function handler(req, res) {
         const totalSupply = BigInt(tokenInfo.total_supply || 0);
         if (totalSupply <= 0n) throw new Error('Token has no supply');
 
-        const targetTokens = totalSupply / 100n; // 1%
+        // 1% of the real supply, in the token's smallest unit. This is what
+        // buy() wants for `amount` - it takes the token quantity and computes
+        // the HBAR cost itself, so there is NO unit conversion to do here.
+        const targetTokens = totalSupply / 100n;
         const memeAddress = hederaIdToEvmAddress(tokenId);
 
+        // Price the buy first (tokens in -> HBAR out) so we can enforce the
+        // spend cap before signing anything. getAmountOut(amount, 0) with
+        // txType 0 = "buy this many meme tokens", returns tinybars needed.
         const provider = new ethers.JsonRpcProvider(RPC_URL);
         const routerContract = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, provider);
+        const hbarNeeded = await routerContract.getAmountOut(memeAddress, targetTokens, 0);
+        if (hbarNeeded <= 0n) throw new Error('Could not price the 1% treasury buy (getAmountOut returned 0)');
 
-        const hbarNeeded = await findHbarForTargetTokens(routerContract, memeAddress, targetTokens, MAX_HBAR_TINYBARS);
+        // Over-cap is an expected outcome (buying 1% of a large-supply token on
+        // the bonding curve can cost 100+ HBAR), not a server error - return a
+        // clear 200 so the fire-and-forget caller doesn't log a 500.
+        if (hbarNeeded > MAX_HBAR_TINYBARS) {
+            console.warn(`treasury-buy: 1% of ${tokenId} costs ${hbarNeeded} tinybars, over cap ${MAX_HBAR_TINYBARS}; skipping`);
+            return res.status(200).json({
+                status: 'skipped_over_cap',
+                tokenId,
+                hbarNeededTinybars: hbarNeeded.toString(),
+                capTinybars: MAX_HBAR_TINYBARS.toString()
+            });
+        }
 
         const chain = getChain('testnet');
         const adapter = createAdapter(NativeAdapter, {
@@ -121,7 +117,9 @@ export default async function handler(req, res) {
         });
 
         const mjToken = await client.getToken(tokenId);
-        const result = await mjToken.buy({ amount: hbarNeeded });
+        // autoAssociate: the treasury account must be associated with the new
+        // token to receive it; without this the native buy fails.
+        const result = await mjToken.buy({ amount: targetTokens, autoAssociate: true });
 
         await supabase.from('treasury_buys').insert([{
             token_id: tokenId,
