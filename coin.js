@@ -146,16 +146,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         // the chart and the trades table from the same data. Refreshed
         // periodically so the chart and activity list reflect new buys/
         // sells while the page is open, not just a one-time snapshot from
-        // page load.
+        // page load. 24h volume is derived from this same trade set rather
+        // than a separate fetch.
         let applyTradesToChart = null;
         try {
             const trades = await fetchTokenTrades(tokenAddress);
             applyTradesToChart = initChart(trades);
             renderTradesTable(trades);
+            updateVolume24h(trades);
         } catch (e) {
             console.error("Failed to load trade history:", e);
             applyTradesToChart = initChart([]);
             renderTradesTable([]);
+            updateVolume24h([]);
         }
 
         setInterval(async () => {
@@ -163,6 +166,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const latestTrades = await fetchTokenTrades(tokenAddress);
                 applyTradesToChart?.(latestTrades);
                 renderTradesTable(latestTrades);
+                updateVolume24h(latestTrades);
             } catch (e) {
                 console.warn("Could not refresh trade activity:", e);
             }
@@ -192,6 +196,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         `;
     }
 });
+
+// Sums HBAR volume (both buys and sells) from trades in the last 24h.
+// fetchTokenTrades pages back a bounded number of the shared contract's
+// most recent logs (not literally "everything ever"), so for a very
+// active token this could undercount slightly if more than that window's
+// worth of trades happened in the last 24h - same recency tradeoff already
+// accepted elsewhere in this app (leaderboard/markets ranking).
+function updateVolume24h(trades) {
+    const cutoff = Date.now() / 1000 - 86400;
+    const volumeTinybars = trades
+        .filter(t => t.timestamp >= cutoff)
+        .reduce((sum, t) => sum + Number(t.hbarTinybars), 0);
+    const volumeHbar = volumeTinybars / 1e8;
+    document.getElementById('stat-volume').textContent =
+        `${volumeHbar.toLocaleString(undefined, { maximumFractionDigits: 2 })} ℏ`;
+}
 
 // Buckets trades into hourly OHLC candles. Price is HBAR per token,
 // derived directly from each trade's totalPrice/amount ratio (both use
@@ -440,7 +460,9 @@ function setupTradeInterface(tokenAddress) {
                 document.getElementById('stat-mcap-hbar').textContent = `${mcap.toLocaleString(undefined, {maximumFractionDigits:0})} ℏ`;
                 document.getElementById('stat-mcap-usd').textContent = `$${(mcap * hbarUsdRate).toLocaleString(undefined, {maximumFractionDigits:2})}`;
 
-                document.getElementById('stat-volume').textContent = `--- ℏ`;
+                // 24h volume is updated separately by updateVolume24h(),
+                // driven by the trade-refresh loop that already has the
+                // real trade data - no need to duplicate that fetch here.
 
                 const triggered = checkAlerts(tokenAddress, priceInHbar);
                 if (triggered.length > 0) {
