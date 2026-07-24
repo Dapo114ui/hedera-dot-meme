@@ -12,6 +12,16 @@ import { wrapProviderForLegacyFees } from './provider-fee-fix.js';
 
 let selectedMemeFile = null;
 
+// After a new deploy, code-split chunk files get new content-hashed names
+// and the old ones are gone - so a tab left open since before the deploy
+// (or one that loaded a cached index.html) fails to dynamically import
+// them with "Failed to fetch dynamically imported module". Vite emits
+// this event specifically for that case; reloading picks up the current
+// index.html and its real chunk URLs.
+window.addEventListener('vite:preloadError', () => {
+    window.location.reload();
+});
+
 // Global Error Handler for Debugging
 window.onerror = function(msg, url, line, col, error) {
     alert(`GLOBAL ERROR: ${msg}\nAt: ${url}:${line}:${col}`);
