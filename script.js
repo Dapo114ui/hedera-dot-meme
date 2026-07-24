@@ -637,14 +637,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             try {
                 
                 try {
+                    // NB: the meme_tokens table only has these columns
+                    // (token_address, creator_address, name, symbol, image_url,
+                    // created_at, liquidity_pool_address, volume_24h). It has NO
+                    // description/twitter_url columns - including them made every
+                    // insert fail with PGRST204 "Could not find the 'description'
+                    // column", so freshly launched tokens never showed in Markets.
+                    // Description and socials already live in the token's IPFS
+                    // metadata (the on-chain memo), so nothing is lost by omitting
+                    // them here.
                     const payload = {
                         token_address: newTokenAddress.toLowerCase(),
                         creator_address: currentUserEvm.toLowerCase(),
                         name: name,
                         symbol: symbol,
-                        image_url: finalDbImageUrl,
-                        description: desc,
-                        twitter_url: twitter
+                        image_url: finalDbImageUrl
                     };
                     console.log("Payload being sent to Supabase:", { token_address: payload.token_address, creator_address: payload.creator_address });
                     const { error } = await supabase.from('meme_tokens').insert([payload]);
