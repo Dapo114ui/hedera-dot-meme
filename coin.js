@@ -148,23 +148,36 @@ document.addEventListener('DOMContentLoaded', async () => {
         // sells while the page is open, not just a one-time snapshot from
         // page load. 24h volume is derived from this same trade set rather
         // than a separate fetch.
-        let applyTradesToChart = null;
+        let chartControls = null;
         try {
             const trades = await fetchTokenTrades(tokenAddress);
-            applyTradesToChart = initChart(trades);
+            chartControls = initChart(trades);
             renderTradesTable(trades);
             updateVolume24h(trades);
         } catch (e) {
             console.error("Failed to load trade history:", e);
-            applyTradesToChart = initChart([]);
+            chartControls = initChart([]);
             renderTradesTable([]);
             updateVolume24h([]);
         }
 
+        // 15m/1h/1d buttons set the candle interval; re-render is instant
+        // since it reuses the already-fetched trades rather than refetching.
+        const TIMEFRAME_SECONDS = { '15m': 900, '1h': 3600, '1d': 86400 };
+        document.querySelectorAll('.tf-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const seconds = TIMEFRAME_SECONDS[btn.textContent.trim()];
+                if (!seconds) return;
+                document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                chartControls?.setBucketSeconds(seconds);
+            });
+        });
+
         setInterval(async () => {
             try {
                 const latestTrades = await fetchTokenTrades(tokenAddress);
-                applyTradesToChart?.(latestTrades);
+                chartControls?.updateTrades(latestTrades);
                 renderTradesTable(latestTrades);
                 updateVolume24h(latestTrades);
             } catch (e) {
@@ -213,11 +226,11 @@ function updateVolume24h(trades) {
         `${volumeHbar.toLocaleString(undefined, { maximumFractionDigits: 2 })} ℏ`;
 }
 
-// Buckets trades into hourly OHLC candles. Price is HBAR per token,
-// derived directly from each trade's totalPrice/amount ratio (both use
-// the same 8-decimal scaling, so it cancels out of the division).
-function buildCandles(trades) {
-    const bucketSeconds = 3600;
+// Buckets trades into OHLC candles at the given interval. Price is HBAR
+// per token, derived directly from each trade's totalPrice/amount ratio
+// (both use the same 8-decimal scaling, so it cancels out of the
+// division).
+function buildCandles(trades, bucketSeconds) {
     const buckets = new Map();
 
     for (const trade of trades) {
@@ -279,8 +292,14 @@ function initChart(trades) {
     emptyMsg.textContent = 'No trades yet';
     emptyMsg.style.cssText = 'position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#94a3b8; pointer-events:none;';
 
-    const applyTrades = (currentTrades) => {
-        const data = buildCandles(currentTrades);
+    // Candle interval is controlled by the 15m/1h/1d buttons - re-rendered
+    // from the last trade set fetched so switching timeframe is instant
+    // and doesn't need a new mirror node round-trip.
+    let lastTrades = trades;
+    let bucketSeconds = 86400; // matches the "1d" button, active by default
+
+    const render = () => {
+        const data = buildCandles(lastTrades, bucketSeconds);
         if (data.length > 0) {
             candlestickSeries.setData(data);
             emptyMsg.remove();
@@ -288,7 +307,7 @@ function initChart(trades) {
             chartContainer.appendChild(emptyMsg);
         }
     };
-    applyTrades(trades);
+    render();
 
     // Handle resize
     new ResizeObserver(entries => {
@@ -297,7 +316,16 @@ function initChart(trades) {
         chart.applyOptions({ height: newRect.height, width: newRect.width });
     }).observe(chartContainer);
 
-    return applyTrades;
+    return {
+        updateTrades: (currentTrades) => {
+            lastTrades = currentTrades;
+            render();
+        },
+        setBucketSeconds: (seconds) => {
+            bucketSeconds = seconds;
+            render();
+        },
+    };
 }
 
 function timeAgo(timestampSeconds) {
