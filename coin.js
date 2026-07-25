@@ -268,7 +268,7 @@ function updateVolume24h(trades) {
         .reduce((sum, t) => sum + Number(t.hbarTinybars), 0);
     const volumeHbar = volumeTinybars / 1e8;
     document.getElementById('stat-volume').textContent =
-        `${volumeHbar.toLocaleString(undefined, { maximumFractionDigits: 2 })} ℏ`;
+        `${volumeHbar.toLocaleString(undefined, { maximumFractionDigits: 2 })} HBAR`;
 }
 
 // Buckets trades into OHLC candles at the given interval. Price is HBAR
@@ -555,11 +555,11 @@ function setupTradeInterface(tokenAddress) {
                 // this tracks it within ~1%, cached internally for a minute.
                 const hbarUsdRate = await fetchHbarUsdRate();
 
-                document.getElementById('stat-price-hbar').textContent = `${priceInHbar.toFixed(8)} ℏ`;
+                document.getElementById('stat-price-hbar').textContent = `${priceInHbar.toFixed(8)} HBAR`;
                 document.getElementById('stat-price-usd').textContent = `$${(priceInHbar * hbarUsdRate).toFixed(8)}`;
 
                 const mcap = priceInHbar * totalSupplyWhole;
-                document.getElementById('stat-mcap-hbar').textContent = `${mcap.toLocaleString(undefined, {maximumFractionDigits:0})} ℏ`;
+                document.getElementById('stat-mcap-hbar').textContent = `${mcap.toLocaleString(undefined, {maximumFractionDigits:0})} HBAR`;
                 document.getElementById('stat-mcap-usd').textContent = `$${(mcap * hbarUsdRate).toLocaleString(undefined, {maximumFractionDigits:2})}`;
 
                 // 24h volume is updated separately by updateVolume24h(),
@@ -648,7 +648,7 @@ function setupTradeInterface(tokenAddress) {
             const li = document.createElement('li');
             li.style.cssText = 'display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); padding: 8px 12px; border-radius: 8px; font-size: 0.85rem;';
             li.innerHTML = `
-                <span>${alertItem.direction === 'above' ? 'Above' : 'Below'} ${alertItem.targetPrice} ℏ</span>
+                <span>${alertItem.direction === 'above' ? 'Above' : 'Below'} ${alertItem.targetPrice} HBAR</span>
                 <button aria-label="Remove alert" style="background: transparent; border: none; color: #94a3b8; cursor: pointer;">✕</button>
             `;
             li.querySelector('button').addEventListener('click', () => {
@@ -661,7 +661,7 @@ function setupTradeInterface(tokenAddress) {
 
     function showAlertToast(alertItem) {
         const toast = document.createElement('div');
-        toast.textContent = `🔔 Price ${alertItem.direction === 'above' ? 'rose above' : 'fell below'} ${alertItem.targetPrice} ℏ`;
+        toast.textContent = `🔔 Price ${alertItem.direction === 'above' ? 'rose above' : 'fell below'} ${alertItem.targetPrice} HBAR`;
         toast.style.cssText = 'position: fixed; bottom: 24px; right: 24px; background: var(--accent-yellow); color: #000; padding: 14px 20px; border-radius: 10px; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 1000;';
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 6000);

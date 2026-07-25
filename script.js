@@ -100,7 +100,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                 </span>`;
             
-            customWalletBtn.innerHTML = `<span id="wallet-balance-display" style="opacity: 0.8; font-weight: normal; margin-right: 6px;">... ℏ</span> ${currentUserNative} ${copyHtml}`;
+            customWalletBtn.innerHTML = `<span id="wallet-balance-display" style="opacity: 0.8; font-weight: normal; margin-right: 6px;">... HBAR</span> ${currentUserNative} ${copyHtml}`;
 
             // Fetch balance asynchronously
             try {
@@ -113,7 +113,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         
                         const balanceDisplay = document.getElementById('wallet-balance-display');
                         if (balanceDisplay) {
-                            balanceDisplay.innerText = `${hbarBalance} ℏ |`;
+                            balanceDisplay.innerText = `${hbarBalance} HBAR |`;
                         }
                         
                         // Dynamically update trade panel balance if on coin page
@@ -1242,12 +1242,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isNew = (Date.now() - token.createdMs) < (24 * 60 * 60 * 1000);
             const newBadgeHtml = isNew ? `<span class="hot-badge">New</span>` : '';
 
-            const priceDisplay = token.hasTrades ? `${token.lastPrice.toFixed(8)} ℏ` : '—';
+            const priceDisplay = token.hasTrades ? `${token.lastPrice.toFixed(8)} HBAR` : '—';
             const changeClass = token.hasTrades ? (token.changePct >= 0 ? 'positive' : 'negative') : '';
             const changeDisplay = token.hasTrades
                 ? `${token.changePct >= 0 ? '↗' : '↘'} ${token.changePct.toFixed(1)}%`
                 : '—';
-            const volumeDisplay = token.hasTrades ? `${token.volumeHbar.toLocaleString(undefined, { maximumFractionDigits: 2 })} ℏ` : 'No trades yet';
+            const volumeDisplay = token.hasTrades ? `${token.volumeHbar.toLocaleString(undefined, { maximumFractionDigits: 2 })} HBAR` : 'No trades yet';
 
             const watchlisted = isWatchlisted(token.address);
 
@@ -1453,7 +1453,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <div class="item-avatar item-avatar-medal">${RANK_MEDALS[index] || '👛'}</div>
                     <div class="item-info">
                         <span class="item-primary">${truncated}</span>
-                        <span class="item-secondary">${volumeHbar} ℏ traded</span>
+                        <span class="item-secondary">${volumeHbar} HBAR traded</span>
                     </div>
                     <div class="item-stats text-right">
                         <span class="stat-primary text-green">${stats.points.toLocaleString()} pts</span>
@@ -1512,7 +1512,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <span class="item-secondary">${symbol}</span>
                     </div>
                     <div class="item-stats text-right">
-                        <span class="stat-primary">${volumeHbar} ℏ</span>
+                        <span class="stat-primary">${volumeHbar} HBAR</span>
                         <span class="stat-secondary">volume</span>
                     </div>
                 `;
