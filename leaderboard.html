@@ -17,7 +17,7 @@
             <img class="logo-icon" src="/onyc-icon.png" alt="Onyc.meme logo">
             <span class="logo-text">Onyc.meme</span>
         </div>
-        
+
         <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Toggle menu">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
@@ -31,7 +31,7 @@
             </a>
             <a href="portfolio.html" class="nav-link">Portfolio</a>
         </nav>
-        
+
         <button id="custom-wallet-btn" class="connect-btn">Connect Wallet</button>
     </header>
 
@@ -41,30 +41,23 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5z"/><path d="M5 20h14"/></svg> Leaderboards
             </div>
             <h1 class="leaderboard-title">Hall of Fame</h1>
-            <p class="leaderboard-subtitle">Top performers and trending memes this week</p>
+            <p class="leaderboard-subtitle">Top traders and trending memes</p>
         </div>
 
-        <div class="leaderboard-grid">
-            <!-- Left Column: Top Creators -->
-            <div class="leaderboard-column">
-                <div class="column-header">
-                    <h3>👑 Top Creators</h3>
-                </div>
-                <div class="list-container" id="top-creators-list">
-                    <!-- Dynamic content will be injected here -->
-                    <div style="text-align: center; padding: 40px; opacity: 0.6;">Loading creators...</div>
-                </div>
-            </div>
+        <div class="leaderboard-tabs markets-filters">
+            <button class="filter-btn active" data-view="wallets">🏆 Top Traders</button>
+            <button class="filter-btn" data-view="tokens">💎 Top Tokens</button>
+        </div>
 
-            <!-- Right Column: Top Memes (By Volume) -->
-            <div class="leaderboard-column">
-                <div class="column-header">
-                    <h3>💎 Top Memes (By Volume)</h3>
-                </div>
-                <div class="list-container" id="top-memes-list">
-                    <!-- Dynamic content will be injected here -->
-                    <div style="text-align: center; padding: 40px; opacity: 0.6;">Loading memes...</div>
-                </div>
+        <div class="leaderboard-column" id="wallets-view">
+            <div class="list-container" id="top-wallets-list">
+                <div style="text-align: center; padding: 40px; opacity: 0.6;">Loading traders...</div>
+            </div>
+        </div>
+
+        <div class="leaderboard-column" id="tokens-view" style="display: none;">
+            <div class="list-container" id="top-memes-list">
+                <div style="text-align: center; padding: 40px; opacity: 0.6;">Loading memes...</div>
             </div>
         </div>
     </main>

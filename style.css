@@ -882,6 +882,14 @@ body {
     flex-direction: column;
 }
 
+.leaderboard-tabs {
+    margin-bottom: 2rem;
+}
+
+.item-avatar.item-avatar-medal {
+    font-size: 1.4rem;
+}
+
 .column-header h3 {
     display: flex;
     align-items: center;

@@ -1122,10 +1122,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Leaderboard Page Logic
-    const topCreatorsList = document.getElementById('top-creators-list');
+    const topWalletsList = document.getElementById('top-wallets-list');
     const topMemesList = document.getElementById('top-memes-list');
-    if (topCreatorsList && topMemesList) {
+    if (topWalletsList && topMemesList) {
         loadLeaderboard();
+
+        const walletsView = document.getElementById('wallets-view');
+        const tokensView = document.getElementById('tokens-view');
+        document.querySelectorAll('.leaderboard-tabs .filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.leaderboard-tabs .filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const isWallets = btn.dataset.view === 'wallets';
+                walletsView.style.display = isWallets ? '' : 'none';
+                tokensView.style.display = isWallets ? 'none' : '';
+            });
+        });
     }
 
     let allMarketTokens = [];
@@ -1338,40 +1350,73 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    const RANK_MEDALS = ['🥇', '🥈', '🥉'];
+
     async function loadLeaderboard() {
+        await Promise.all([loadTopWallets(), loadTopMemes()]);
+    }
+
+    // Top Traders - ranked by real trade-volume points (api/award-points.js).
+    // Aggregated client-side from the ledger's rows, same spirit as the
+    // recency-bounded scans elsewhere in this app (mirror-trades.js) rather
+    // than requiring a separate DB view; bounded to the most recent 2000
+    // ledger entries so this stays cheap as the table grows.
+    async function loadTopWallets() {
+        try {
+            const { data: rows, error } = await supabase
+                .from('trade_points_ledger')
+                .select('wallet_address, points_awarded, volume_tinybars')
+                .order('created_at', { ascending: false })
+                .limit(2000);
+            if (error) throw error;
+
+            const totals = new Map();
+            (rows || []).forEach(r => {
+                const existing = totals.get(r.wallet_address) || { points: 0, volumeTinybars: 0 };
+                existing.points += r.points_awarded;
+                existing.volumeTinybars += Number(r.volume_tinybars);
+                totals.set(r.wallet_address, existing);
+            });
+
+            const ranked = Array.from(totals.entries())
+                .sort((a, b) => b[1].points - a[1].points)
+                .slice(0, 10);
+
+            topWalletsList.innerHTML = '';
+            if (ranked.length === 0) {
+                topWalletsList.innerHTML = '<div style="text-align: center; padding: 40px; opacity: 0.7;">No trades recorded yet.</div>';
+                return;
+            }
+            ranked.forEach(([address, stats], index) => {
+                const truncated = address.substring(0, 6) + '...' + address.substring(address.length - 4);
+                const volumeHbar = (stats.volumeTinybars / 1e8).toLocaleString(undefined, { maximumFractionDigits: 2 });
+                const div = document.createElement('div');
+                div.className = `list-item${index === 0 ? ' highlight-gold' : ''}`;
+                div.innerHTML = `
+                    <div class="item-rank">#${index + 1}</div>
+                    <div class="item-avatar item-avatar-medal">${RANK_MEDALS[index] || '👛'}</div>
+                    <div class="item-info">
+                        <span class="item-primary">${truncated}</span>
+                        <span class="item-secondary">${volumeHbar} ℏ traded</span>
+                    </div>
+                    <div class="item-stats text-right">
+                        <span class="stat-primary text-green">${stats.points.toLocaleString()} pts</span>
+                    </div>
+                `;
+                topWalletsList.appendChild(div);
+            });
+        } catch (error) {
+            console.error("Error loading top wallets:", error);
+            topWalletsList.innerHTML = '<div style="color: #ff4d4d; text-align: center; padding: 20px;">Error loading data</div>';
+        }
+    }
+
+    // Top Tokens - ranked by real HBAR trade volume, not recency.
+    async function loadTopMemes() {
         try {
             const { data: allTokens, error } = await supabase.from('meme_tokens').select('*');
             if (error) throw error;
 
-            // 1. Top Creators - real counts from our own launch records
-            const creatorCounts = {};
-            (allTokens || []).forEach(t => {
-                if (!t.creator_address) return;
-                creatorCounts[t.creator_address] = (creatorCounts[t.creator_address] || 0) + 1;
-            });
-            const sortedCreators = Object.entries(creatorCounts)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 10);
-
-            topCreatorsList.innerHTML = '';
-            if (sortedCreators.length === 0) {
-                topCreatorsList.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No creators found yet.</div>';
-            } else {
-                sortedCreators.forEach(([address, count], index) => {
-                    const truncated = address.substring(0, 6) + '...' + address.substring(address.length - 4);
-                    const li = document.createElement('li');
-                    li.innerHTML = `
-                        <div class="creator-rank">#${index + 1}</div>
-                        <div class="creator-info">
-                            <span class="creator-address">${truncated}</span>
-                            <span class="creator-count">${count} Token${count > 1 ? 's' : ''} Launched</span>
-                        </div>
-                    `;
-                    topCreatorsList.appendChild(li);
-                });
-            }
-
-            // 2. Top Memes - ranked by real HBAR trade volume, not recency
             topMemesList.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.6;">Loading trade volume...</div>';
             const tokenByAddress = new Map((allTokens || []).map(t => [t.token_address.toLowerCase(), t]));
             const volumeRanked = await fetchTopTokensByVolume();
@@ -1382,38 +1427,44 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             topMemesList.innerHTML = '';
             if (rankedMemes.length === 0) {
-                topMemesList.innerHTML = '<div style="text-align: center; padding: 20px; opacity: 0.7;">No trading activity yet.</div>';
-            } else {
-                rankedMemes.forEach(({ token, hbarTinybars }, index) => {
-                    let displayImage = token.image_url && token.image_url.startsWith('http') ? token.image_url : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
-                    const localImage = localStorage.getItem(`meme_image_${token.token_address.toLowerCase()}`);
-                    if (localImage) {
-                        displayImage = localImage;
-                    } else if (token.image_url && token.image_url.startsWith('ipfs://') && !token.image_url.includes('bafybeidmeme')) {
-                        displayImage = token.image_url.replace('ipfs://', 'https://ipfs.io/ipfs/');
-                    }
-                    displayImage = displayImage.replace('gateway.pinata.cloud', 'ipfs.io');
-
-                    const volumeHbar = (Number(hbarTinybars) / 1e8).toLocaleString(undefined, { maximumFractionDigits: 2 });
-                    const symbol = token.symbol.startsWith('$') ? token.symbol : `$${token.symbol}`;
-
-                    const li = document.createElement('li');
-                    li.innerHTML = `
-                        <div class="meme-rank">#${index + 1}</div>
-                        <div class="meme-avatar" style="background: url('${displayImage}') center/cover; border-radius: 8px;"></div>
-                        <div class="meme-info">
-                            <span class="meme-name">${token.name}</span>
-                            <span class="meme-symbol">${symbol} &middot; ${volumeHbar} ℏ volume</span>
-                        </div>
-                        <a href="coin.html?address=${token.token_address}" class="view-btn">View</a>
-                    `;
-                    topMemesList.appendChild(li);
-                });
+                topMemesList.innerHTML = '<div style="text-align: center; padding: 40px; opacity: 0.7;">No trading activity yet.</div>';
+                return;
             }
+            rankedMemes.forEach(({ token, hbarTinybars }, index) => {
+                let displayImage = token.image_url && token.image_url.startsWith('http') ? token.image_url : 'https://placehold.co/400x400/1a1a2e/ffd700?text=MEME';
+                const localImage = localStorage.getItem(`meme_image_${token.token_address.toLowerCase()}`);
+                if (localImage) {
+                    displayImage = localImage;
+                } else if (token.image_url && token.image_url.startsWith('ipfs://') && !token.image_url.includes('bafybeidmeme')) {
+                    displayImage = token.image_url.replace('ipfs://', 'https://ipfs.io/ipfs/');
+                }
+                displayImage = displayImage.replace('gateway.pinata.cloud', 'ipfs.io');
+
+                const volumeHbar = (Number(hbarTinybars) / 1e8).toLocaleString(undefined, { maximumFractionDigits: 2 });
+                const symbol = token.symbol.startsWith('$') ? token.symbol : `$${token.symbol}`;
+
+                const a = document.createElement('a');
+                a.href = `coin.html?address=${token.token_address}`;
+                a.className = `list-item${index === 0 ? ' highlight-gold' : ''}`;
+                a.style.textDecoration = 'none';
+                a.style.color = 'inherit';
+                a.innerHTML = `
+                    <div class="item-rank">#${index + 1}</div>
+                    <div class="item-avatar-square" style="background: url('${displayImage}') center/cover;"></div>
+                    <div class="item-info">
+                        <span class="item-primary">${token.name}</span>
+                        <span class="item-secondary">${symbol}</span>
+                    </div>
+                    <div class="item-stats text-right">
+                        <span class="stat-primary">${volumeHbar} ℏ</span>
+                        <span class="stat-secondary">volume</span>
+                    </div>
+                `;
+                topMemesList.appendChild(a);
+            });
         } catch (error) {
-            console.error("Error loading leaderboard:", error);
-            if (topCreatorsList) topCreatorsList.innerHTML = '<div style="color: #ff4d4d; text-align: center; padding: 20px;">Error loading data</div>';
-            if (topMemesList) topMemesList.innerHTML = '<div style="color: #ff4d4d; text-align: center; padding: 20px;">Error loading data</div>';
+            console.error("Error loading top memes:", error);
+            topMemesList.innerHTML = '<div style="color: #ff4d4d; text-align: center; padding: 20px;">Error loading data</div>';
         }
     }
 
