@@ -363,6 +363,22 @@ function renderTradesTable(trades) {
     }
 }
 
+// Fire-and-forget: award trade-volume points server-side. Never blocks or
+// fails the trade UX - the trade itself already succeeded on-chain by the
+// time this runs. The server independently re-verifies the trade against
+// the mirror node rather than trusting anything sent here (points map to
+// a future token airdrop, so the client is never a trusted source for how
+// much a trade was actually worth).
+function awardPointsForTrade(buyOrSellResult, walletAddress) {
+    const txId = buyOrSellResult?.transactionIdOrHash;
+    if (!txId || !walletAddress) return;
+    fetch('/api/award-points', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ txId, walletAddress })
+    }).catch(err => console.warn('Award points request failed:', err));
+}
+
 function renderHoldersTable(holders) {
     const holdersBody = document.getElementById('holders-tbody');
     holdersBody.innerHTML = '';
@@ -741,6 +757,9 @@ function setupTradeInterface(tokenAddress) {
         try {
             if (window.ensureHederaTestnet) await window.ensureHederaTestnet();
 
+            const accounts = await universalProvider.request({ method: 'eth_accounts' });
+            const userAddress = accounts?.[0];
+
             // Set up MemeJob Client
             const [{ ContractId }, { CONTRACT_DEPLOYMENTS, createAdapter, getChain, MJClient, EvmAdapter }] = await Promise.all([
                 import('@hashgraph/sdk'),
@@ -779,6 +798,7 @@ function setupTradeInterface(tokenAddress) {
                     amount: tokenAmount
                 });
                 console.log("Buy result:", result);
+                awardPointsForTrade(result, userAddress);
             } else {
                 const amountIn = ethers.parseUnits(amount.toString(), 8); // sell amount is already in tokens
                 console.log("Selling via SDK with amount:", amountIn.toString());
@@ -787,6 +807,7 @@ function setupTradeInterface(tokenAddress) {
                     instant: true
                 });
                 console.log("Sell result:", result);
+                awardPointsForTrade(result, userAddress);
             }
 
             alert(`SUCCESS! Successfully ${currentMode === 'buy' ? 'bought' : 'sold'} tokens.`);
