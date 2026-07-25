@@ -42,8 +42,18 @@ try {
     featuredWalletIds: [
       'fd20d04085600c01d93a4b92b9508a56' // HashPack Wallet ID
     ],
-    allWallets: 'SHOW', 
-    enableEIP6963: true 
+    allWallets: 'SHOW',
+    enableEIP6963: true,
+    // This is a multi-page site - every nav-link click is a full reload, so
+    // AppKit's default reconnect-on-init runs on every single navigation.
+    // For an injected/EIP-6963 connector (e.g. HashPack's "Installed"
+    // option) that reconnect calls eth_requestAccounts, not the silent
+    // eth_accounts, and HashPack surfaces its own window for that call
+    // every time - which is what was popping the wallet open on every
+    // click. Disabling AppKit's own reconnect stops that; script.js
+    // restores the "already connected" UI itself via a genuinely-silent
+    // eth_accounts read instead (see syncAppKitState).
+    enableReconnect: false
   });
 
 } catch (err) {

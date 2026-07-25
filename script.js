@@ -150,13 +150,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     let hashpackProvider = null;
-    
-    // EIP-6963 Provider Discovery (Passive listen only, no active dispatch)
+
+    // EIP-6963 Provider Discovery
     window.addEventListener("eip6963:announceProvider", (event) => {
         if (event.detail?.info?.name?.toLowerCase().includes('hashpack')) {
             hashpackProvider = event.detail.provider;
         }
     });
+    // Now that AppKit's own auto-reconnect is disabled (wallet.js), this
+    // direct discovery is load-bearing for restoring "already connected" UI
+    // state on every page (see syncAppKitState below), so actively solicit
+    // announcements instead of only waiting for ones fired unprompted.
+    window.dispatchEvent(new Event('eip6963:requestProvider'));
 
     const getProvider = async () => {
         // Wait briefly in case EIP-6963 is still announcing
@@ -225,6 +230,28 @@ document.addEventListener('DOMContentLoaded', async () => {
                 address = window.ethereum.selectedAddress;
             }
 
+            // AppKit's own reconnect is disabled (wallet.js sets
+            // enableReconnect: false) because its injected-connector sync
+            // calls eth_requestAccounts - which HashPack answers by popping
+            // its own window open - on every single page load of this
+            // multi-page site. So "already connected" has to be restored
+            // here instead, via a plain eth_accounts read: per the EIP-1193
+            // spec this is always silent/no-prompt, since it only returns
+            // accounts already permitted for this origin.
+            if (!isConnected) {
+                try {
+                    const provider = typeof window.getUniversalProvider === 'function' ? await window.getUniversalProvider() : null;
+                    if (provider) {
+                        const accounts = await provider.request({ method: 'eth_accounts' });
+                        if (accounts && accounts[0]) {
+                            isConnected = true;
+                            address = accounts[0];
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Silent eth_accounts restore failed:", e);
+                }
+            }
 
             if (address) {
                 // Forcefully strip CAIP-10 prefixes via Regex
