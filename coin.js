@@ -435,11 +435,17 @@ function setupTradeInterface(tokenAddress) {
     const ROUTER_ABI = [
         "function buyJob(address memeAddress, uint256 amountOutMin, address referrer) external payable",
         "function sellJob(address memeAddress, uint256 amountIn) external",
-        "function getAmountOut(address memeAddress, uint256 amount, uint8 txType) view returns (uint256 value)"
+        "function getAmountOut(address memeAddress, uint256 amount, uint8 txType) view returns (uint256 value)",
+        "function addressToMemeTokenMapping(address token) view returns (address tokenAddress, address creatorAddress, uint256 fundsRaised, uint256 tokensSold, address firstBuyer, bool distributeRewards)",
+        "function FUNDING_GOAL() view returns (uint256)"
     ];
 
     const provider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
     const routerContract = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, provider);
+
+    // FUNDING_GOAL is a fixed global constant (same for every token), so it's
+    // fetched once and cached rather than on every fetchStats() poll.
+    let fundingGoalTinybars = null;
 
     // Total supply is fixed by the memejob contract at creation time (every
     // token mints the same amount) and never changes, so it's fetched once
@@ -497,6 +503,25 @@ function setupTradeInterface(tokenAddress) {
                     triggered.forEach(a => showAlertToast(a));
                     renderAlertsList();
                 }
+            }
+
+            // Bonding progress: real fundsRaised/FUNDING_GOAL from the
+            // contract (was a hardcoded "6.9%" for every token before -
+            // verified against several real tokens: a heavily-traded one
+            // shows meaningfully higher progress than freshly-launched ones,
+            // confirming this is the real underlying mechanic).
+            try {
+                if (fundingGoalTinybars === null) {
+                    fundingGoalTinybars = await routerContract.FUNDING_GOAL();
+                }
+                const mapping = await routerContract.addressToMemeTokenMapping(tokenAddress);
+                const progressPct = fundingGoalTinybars > 0n
+                    ? Math.min(100, (Number(mapping.fundsRaised) / Number(fundingGoalTinybars)) * 100)
+                    : 0;
+                document.getElementById('stat-progress-value').textContent = `${progressPct.toFixed(progressPct < 1 ? 4 : 1)}%`;
+                document.getElementById('progress-bar-fill').style.width = `${progressPct}%`;
+            } catch (e) {
+                console.warn('Could not fetch bonding progress', e);
             }
 
             // Was gated on window.ethereum directly, which HashPack's
