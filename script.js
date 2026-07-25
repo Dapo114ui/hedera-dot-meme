@@ -2,7 +2,7 @@ import { Buffer } from 'buffer';
 import { supabase } from './supabase.js';
 import { formatUnits } from 'ethers';
 import { appkit } from './wallet.js';
-import { evmAddressToHederaId, resolveAccountEvmAddress, fetchTopTokensByVolume, fetchTokenMarketStats } from './mirror-trades.js';
+import { evmAddressToHederaId, resolveAccountEvmAddress, fetchTopTokensByVolume, fetchTokenMarketStats, fetchCreationFeeTinybars } from './mirror-trades.js';
 import { isWatchlisted, toggleWatchlist } from './watchlist.js';
 import { wrapProviderForLegacyFees } from './provider-fee-fix.js';
 
@@ -11,6 +11,12 @@ import { wrapProviderForLegacyFees } from './provider-fee-fix.js';
 // launch handler below) so pages that never launch a token don't pay for it.
 
 let selectedMemeFile = null;
+
+// Flat platform fee charged to the launcher, paid straight to the treasury
+// account as a separate transfer after their token is created (see the
+// launch handler below). Hoisted here so the launch summary's live total
+// cost display references the same value instead of a duplicated literal.
+const LAUNCH_FEE_HBAR = 5;
 
 // After a new deploy, code-split chunk files get new content-hashed names
 // and the old ones are gone - so a tab left open since before the deploy
@@ -337,6 +343,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    // Show the real, current total cost to launch: the dynamic token-creation
+    // fee (Hedera's exchange rate precompile, ~$1 worth of HBAR, fluctuates
+    // with the rate) + the fixed 5 HBAR initial buy bundled into the same
+    // creation transaction + the separate 5 HBAR platform launch fee.
+    const summaryTotalCostElem = document.getElementById('summary-total-cost');
+    if (summaryTotalCostElem) {
+        const summaryBreakdownElem = document.getElementById('summary-total-breakdown');
+        const INITIAL_BUY_HBAR = 5; // matches the 500000000n tinybars amount passed to createToken()
+        fetchCreationFeeTinybars().then(creationFeeTinybars => {
+            const creationFeeHbar = Number(creationFeeTinybars) / 1e8;
+            if (creationFeeHbar > 0) {
+                const total = creationFeeHbar + INITIAL_BUY_HBAR + LAUNCH_FEE_HBAR;
+                summaryTotalCostElem.textContent = `~${total.toFixed(2)} HBAR`;
+                if (summaryBreakdownElem) {
+                    summaryBreakdownElem.textContent = `Creation fee ~${creationFeeHbar.toFixed(2)} + initial buy ${INITIAL_BUY_HBAR} + platform fee ${LAUNCH_FEE_HBAR}`;
+                }
+            } else {
+                summaryTotalCostElem.textContent = 'Unavailable';
+            }
+        }).catch(() => {
+            summaryTotalCostElem.textContent = 'Unavailable';
+        });
+    }
+
     // Explicitly bind the launch submit button
     const launchSubmitBtnElem = document.querySelector('.launch-submit-btn');
     if (launchSubmitBtnElem) {
@@ -592,7 +622,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             // rejected/failed fee transfer is logged and skipped, never
             // treated as a launch failure - the user already got what they
             // came for.
-            const LAUNCH_FEE_HBAR = 5;
             const treasuryAccountId = import.meta.env.VITE_TREASURY_ACCOUNT_ID;
             if (treasuryAccountId && currentUserEvm) {
                 try {

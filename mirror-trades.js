@@ -7,18 +7,18 @@ const CONTRACT_ADDRESS = '0xa3bf9adec2fb49fb65c8948aed71c6bf1c4d61c8'; // memejo
 const EXCHANGE_RATE_PRECOMPILE = '0x0000000000000000000000000000000000000168';
 const exchangeRateInterface = new Interface(['function tinycentsToTinybars(uint256 tinycents) view returns (uint256)']);
 
-let cachedHbarUsdRate = null;
-let cachedHbarUsdRateAt = 0;
-const HBAR_USD_CACHE_MS = 60000;
+// tinycentsToTinybars($1.00) is the one live call both of these derive
+// from: it's the exact same call the memejob SDK's getCreationFee() makes
+// (100n * 10n**TOKEN_DECIMALS tinycents, TOKEN_DECIMALS=8), so its raw
+// result IS the token creation fee in tinybars directly - no separate
+// fetch needed to know both the HBAR/USD rate and the creation fee.
+let cachedTinybarsPerDollar = null;
+let cachedAt = 0;
+const CACHE_MS = 60000;
 
-// Hedera's own exchange-rate precompile (also used for the launch/HTS fees
-// elsewhere in this app) is a much better source for HBAR/USD than a
-// hardcoded constant - verified against real market price (~$0.071 on
-// exchanges): this returns ~$0.0706, within ~1%. No external API, no CORS,
-// no rate limits. Cached briefly since the rate only updates hourly-ish.
-export async function fetchHbarUsdRate() {
-    if (cachedHbarUsdRate !== null && Date.now() - cachedHbarUsdRateAt < HBAR_USD_CACHE_MS) {
-        return cachedHbarUsdRate;
+async function fetchTinybarsPerDollar() {
+    if (cachedTinybarsPerDollar !== null && Date.now() - cachedAt < CACHE_MS) {
+        return cachedTinybarsPerDollar;
     }
     try {
         const data = exchangeRateInterface.encodeFunctionData('tinycentsToTinybars', [100n * 10n ** 8n]); // $1.00 in tinycents
@@ -29,15 +29,32 @@ export async function fetchHbarUsdRate() {
         });
         const json = await res.json();
         const [tinybarsPerDollar] = exchangeRateInterface.decodeFunctionResult('tinycentsToTinybars', json.result);
-        const hbarPerDollar = Number(tinybarsPerDollar) / 1e8;
-        if (hbarPerDollar > 0) {
-            cachedHbarUsdRate = 1 / hbarPerDollar;
-            cachedHbarUsdRateAt = Date.now();
+        if (tinybarsPerDollar > 0n) {
+            cachedTinybarsPerDollar = tinybarsPerDollar;
+            cachedAt = Date.now();
         }
     } catch (e) {
-        console.warn('Could not fetch live HBAR/USD rate', e);
+        console.warn('Could not fetch live exchange rate', e);
     }
-    return cachedHbarUsdRate ?? 0;
+    return cachedTinybarsPerDollar ?? 0n;
+}
+
+// Hedera's own exchange-rate precompile (also used for the launch/HTS fees
+// elsewhere in this app) is a much better source for HBAR/USD than a
+// hardcoded constant - verified against real market price (~$0.071 on
+// exchanges): this returns ~$0.0706, within ~1%. No external API, no CORS,
+// no rate limits. Cached briefly since the rate only updates hourly-ish.
+export async function fetchHbarUsdRate() {
+    const tinybarsPerDollar = await fetchTinybarsPerDollar();
+    const hbarPerDollar = Number(tinybarsPerDollar) / 1e8;
+    return hbarPerDollar > 0 ? 1 / hbarPerDollar : 0;
+}
+
+// The real, current token-creation fee (in tinybars) - what memejob's
+// getCreationFee() itself returns, exposed here so the UI can show it
+// without a redundant fetch.
+export async function fetchCreationFeeTinybars() {
+    return fetchTinybarsPerDollar();
 }
 
 const TRADE_EVENTS_ABI = [
