@@ -138,6 +138,51 @@ document.addEventListener('DOMContentLoaded', async () => {
             };
         }
 
+        // Description and social links were pinned to IPFS at launch time
+        // (the on-chain memo points at that JSON) but were never fetched
+        // back here - so they were entered at launch and then never shown
+        // anywhere. Non-blocking: don't hold up the rest of the page on an
+        // IPFS gateway round-trip.
+        (async () => {
+            try {
+                const hederaId = evmAddressToHederaId(tokenAddress);
+                const tokenInfoRes = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/tokens/${hederaId}`);
+                if (!tokenInfoRes.ok) return;
+                const tokenInfo = await tokenInfoRes.json();
+                const memo = tokenInfo.memo;
+                if (!memo || !memo.startsWith('ipfs://')) return; // fallback (non-IPFS) memo - nothing to show
+
+                const metadataRes = await fetch(`https://ipfs.io/ipfs/${memo.replace('ipfs://', '')}`);
+                if (!metadataRes.ok) return;
+                const metadata = await metadataRes.json();
+
+                if (metadata.description) {
+                    const descElem = document.getElementById('token-description');
+                    descElem.textContent = metadata.description;
+                    descElem.style.display = 'block';
+                }
+
+                const links = {
+                    'social-twitter': metadata.properties?.twitter,
+                    'social-telegram': metadata.properties?.telegram,
+                    'social-website': metadata.properties?.website
+                };
+                let anyLink = false;
+                for (const [id, url] of Object.entries(links)) {
+                    if (!url) continue;
+                    const elem = document.getElementById(id);
+                    elem.href = url.startsWith('http') ? url : `https://${url}`;
+                    elem.style.display = 'flex';
+                    anyLink = true;
+                }
+                if (anyLink) {
+                    document.getElementById('token-socials').style.display = 'flex';
+                }
+            } catch (e) {
+                console.warn('Could not load description/social links from IPFS metadata:', e);
+            }
+        })();
+
         // Hide loader, show content
         document.getElementById('coin-loader').style.display = 'none';
         document.getElementById('coin-content').style.display = 'block';
