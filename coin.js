@@ -508,6 +508,13 @@ function setupTradeInterface(tokenAddress) {
     // fetched once and cached rather than on every fetchStats() poll.
     let fundingGoalTinybars = null;
 
+    // The connected wallet's address, cached after the first successful
+    // eth_accounts read. fetchStats() polls every 10s, and re-asking the
+    // wallet for its accounts on every single poll (rather than just reading
+    // the already-known on-chain balance) was hammering the wallet provider
+    // with a request it has no real reason to re-answer that often.
+    let cachedUserAddress = null;
+
     // Total supply is fixed by the memejob contract at creation time (every
     // token mints the same amount) and never changes, so it's fetched once
     // here rather than on every fetchStats() poll. Falls back to the
@@ -593,23 +600,29 @@ function setupTradeInterface(tokenAddress) {
             // the sell-tab balance stuck at "0 Tokens" regardless of real
             // holdings. balanceOf is a read, so no signer is needed - just
             // the already-connected account address.
-            const walletProvider = typeof window.getUniversalProvider === 'function' ? await window.getUniversalProvider() : window.ethereum;
-            if (walletProvider) {
+            if (!cachedUserAddress) {
+                const walletProvider = typeof window.getUniversalProvider === 'function' ? await window.getUniversalProvider() : window.ethereum;
+                if (walletProvider) {
+                    try {
+                        const accounts = await walletProvider.request({ method: 'eth_accounts' });
+                        cachedUserAddress = accounts?.[0] || null;
+                    } catch (e) {
+                        console.warn("Could not fetch connected account for token balance", e);
+                    }
+                }
+            }
+            if (cachedUserAddress) {
                 try {
-                    const accounts = await walletProvider.request({ method: 'eth_accounts' });
-                    const userAddress = accounts?.[0];
-                    if (userAddress) {
-                        const erc20ABI = ["function balanceOf(address owner) view returns (uint256)"];
-                        const tokenContract = new ethers.Contract(tokenAddress, erc20ABI, provider);
-                        const balance = await tokenContract.balanceOf(userAddress);
-                        window.currentTokenBalance = ethers.formatUnits(balance, 8);
+                    const erc20ABI = ["function balanceOf(address owner) view returns (uint256)"];
+                    const tokenContract = new ethers.Contract(tokenAddress, erc20ABI, provider);
+                    const balance = await tokenContract.balanceOf(cachedUserAddress);
+                    window.currentTokenBalance = ethers.formatUnits(balance, 8);
 
-                        if (currentMode === 'sell') {
-                            document.getElementById('trade-balance').textContent = `${window.currentTokenBalance} Tokens`;
-                        }
+                    if (currentMode === 'sell') {
+                        document.getElementById('trade-balance').textContent = `${window.currentTokenBalance} Tokens`;
                     }
                 } catch (e) {
-                    console.warn("Could not fetch connected account for token balance", e);
+                    console.warn("Could not fetch token balance", e);
                 }
             }
         } catch(e) {
