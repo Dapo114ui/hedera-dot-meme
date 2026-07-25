@@ -20,6 +20,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
+        home: resolve(__dirname, 'home.html'),
         markets: resolve(__dirname, 'markets.html'),
         launch: resolve(__dirname, 'launch.html'),
         leaderboard: resolve(__dirname, 'leaderboard.html'),

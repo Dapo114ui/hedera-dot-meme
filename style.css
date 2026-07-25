@@ -239,6 +239,61 @@ body {
     transform: translateY(-2px);
 }
 
+/* Splash page (index.html) - same look as .primary-btn, kept as a
+   distinct class so script.js's markets.html-navigating .primary-btn
+   click handler (shared across every page) doesn't also attach to this
+   button; it's a plain link, not a JS-driven navigation. */
+.enter-app-btn {
+    background-color: var(--accent-yellow);
+    color: #000;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 1.1rem;
+    padding: 1rem 1.8rem;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 20px rgba(253, 224, 48, 0.25);
+}
+
+.enter-app-btn:hover {
+    background-color: var(--accent-yellow-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 25px rgba(253, 224, 48, 0.4);
+}
+
+.splash-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    text-align: center;
+    padding: 2rem;
+    gap: 2rem;
+}
+
+.splash-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.splash-logo img {
+    width: 48px;
+    height: 48px;
+}
+
+.splash-logo span {
+    font-size: 1.75rem;
+    font-weight: 700;
+}
+
 /* Dropdown Menu */
 .nav-dropdown-container {
     position: relative;
