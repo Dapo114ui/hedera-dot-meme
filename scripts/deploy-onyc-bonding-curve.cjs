@@ -42,8 +42,15 @@ async function main() {
   const tradingFeeBps = Number(process.env.TRADING_FEE_BPS || "100");
   const fundingGoalHbar = process.env.FUNDING_GOAL_HBAR || "72270";
 
-  const creationFeeWeibars = ethers.parseEther(creationFeeHbar);
-  const fundingGoalWeibars = ethers.parseEther(fundingGoalHbar);
+  // Constructor args are plain contract state, not a value: transfer, so
+  // they use the contract's own internal scale directly: tinybars (8
+  // decimals) - confirmed live on testnet that msg.value/native HBAR
+  // amounts inside contract execution are tinybar-scale, NOT the
+  // 18-decimal "ether" scale outer transaction value fields use (see
+  // contracts/test/ValueScaleProbe.sol). An earlier deploy using
+  // parseEther here (18 decimals) failed every create() call.
+  const creationFeeTinybars = ethers.parseUnits(creationFeeHbar, 8);
+  const fundingGoalTinybars = ethers.parseUnits(fundingGoalHbar, 8);
 
   const [deployer] = await ethers.getSigners();
   if (!deployer) {
@@ -72,9 +79,9 @@ async function main() {
   const Curve = await ethers.getContractFactory("OnycBondingCurve");
   const curve = await Curve.deploy(
     treasury,
-    creationFeeWeibars,
+    creationFeeTinybars,
     tradingFeeBps,
-    fundingGoalWeibars,
+    fundingGoalTinybars,
     ethers.ZeroAddress // resolves to the real 0x167 HTS precompile inside the contract
   );
   await curve.waitForDeployment();

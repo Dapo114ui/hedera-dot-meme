@@ -77,7 +77,12 @@ contract MockHederaTokenService is IHederaTokenService {
     /// Whatever of the caller's forwarded value exceeds this gets refunded
     /// immediately, mirroring real Hedera's documented behavior of only
     /// consuming the actual cost and returning the rest to the caller.
-    uint256 public constant MOCK_REAL_HTS_COST = 15 ether;
+    /// @dev A plain local EVM (unlike real Hedera) does not rescale
+    /// msg.value, so this mock's own units just need to match whatever
+    /// scale OnycBondingCurve uses internally - tinybars (8 decimals),
+    /// confirmed against a real deployment (see
+    /// contracts/test/ValueScaleProbe.sol).
+    uint256 public constant MOCK_REAL_HTS_COST = 15 * 10 ** 8;
 
     function createFungibleToken(
         HederaToken memory token,

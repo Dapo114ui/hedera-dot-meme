@@ -32,17 +32,27 @@ contract OnycBondingCurve is IOnycBondingCurve {
     // TOTAL_SUPPLY - CURVE_SUPPLY stays held by this contract, earmarked
     // for future DEX-liquidity seeding at graduation - a v2 feature this
     // contract does not implement.
-    uint256 internal constant INITIAL_VIRTUAL_HBAR_RESERVE = 300 ether; // 300 HBAR, 18-decimal weibars
+    //
+    // 300 HBAR in tinybars (8 decimals). Confirmed live on Hedera testnet
+    // (see contracts/test/ValueScaleProbe.sol and scripts/probe-value-scale.cjs)
+    // that msg.value and address(this).balance inside contract execution
+    // are in native 8-decimal tinybars, NOT the 18-decimal "weibar"
+    // convention the outer JSON-RPC transaction's value field and
+    // eth_getBalance use - those two only agree at the RPC boundary, not
+    // inside the EVM. Every HBAR-denominated amount in this contract is
+    // in tinybars for that reason.
+    uint256 internal constant INITIAL_VIRTUAL_HBAR_RESERVE = 300 * 10 ** 8;
 
-    /// @dev Generous flat buffer forwarded to the HTS precompile to cover
-    /// the network's own real token-creation cost (~$1, i.e. roughly
-    /// 15-20 HBAR depending on the exchange rate). Hedera refunds whatever
-    /// of this the precompile doesn't actually use back into this
+    /// @dev Generous flat buffer (tinybars) forwarded to the HTS precompile
+    /// to cover the network's own real token-creation cost (~$1, i.e.
+    /// roughly 15-20 HBAR depending on the exchange rate). Hedera refunds
+    /// whatever of this the precompile doesn't actually use back into this
     /// contract's own balance - see create() below, which then sweeps
     /// that refund (msg.value minus the real HTS cost) to platformTreasury
-    /// as this platform's margin. Matches the exact number this project's
-    /// own archived HTS attempts used successfully.
-    uint256 internal constant HTS_CREATION_BUFFER_WEIBARS = 40 ether;
+    /// as this platform's margin. Matches the exact HBAR number this
+    /// project's own archived HTS attempts used successfully (rescaled
+    /// here to tinybars).
+    uint256 internal constant HTS_CREATION_BUFFER_TINYBARS = 40 * 10 ** 8;
 
     uint16 internal constant MAX_TRADING_FEE_BPS = 500; // 5% hard cap
 
@@ -51,7 +61,7 @@ contract OnycBondingCurve is IOnycBondingCurve {
     // ------------------------------------------------------------------
 
     address public immutable platformTreasury;
-    uint256 public immutable creationFeeWeibarsValue;
+    uint256 public immutable creationFeeTinybarsValue;
     uint16 public immutable tradingFeeBpsValue;
     uint256 public immutable fundingGoalValue;
 
@@ -72,23 +82,23 @@ contract OnycBondingCurve is IOnycBondingCurve {
 
     constructor(
         address _platformTreasury,
-        uint256 _creationFeeWeibars,
+        uint256 _creationFeeTinybars,
         uint16 _tradingFeeBps,
-        uint256 _fundingGoalWeibars,
+        uint256 _fundingGoalTinybars,
         address _htsPrecompile
     ) {
         require(_platformTreasury != address(0), "treasury cannot be zero address");
         require(
-            _creationFeeWeibars >= HTS_CREATION_BUFFER_WEIBARS,
+            _creationFeeTinybars >= HTS_CREATION_BUFFER_TINYBARS,
             "creation fee must cover HTS network cost"
         );
         require(_tradingFeeBps <= MAX_TRADING_FEE_BPS, "trading fee too high");
-        require(_fundingGoalWeibars > 0, "funding goal must be positive");
+        require(_fundingGoalTinybars > 0, "funding goal must be positive");
 
         platformTreasury = _platformTreasury;
-        creationFeeWeibarsValue = _creationFeeWeibars;
+        creationFeeTinybarsValue = _creationFeeTinybars;
         tradingFeeBpsValue = _tradingFeeBps;
-        fundingGoalValue = _fundingGoalWeibars;
+        fundingGoalValue = _fundingGoalTinybars;
         htsPrecompile = IHederaTokenService(
             _htsPrecompile == address(0) ? DEFAULT_HTS_PRECOMPILE : _htsPrecompile
         );
@@ -104,8 +114,8 @@ contract OnycBondingCurve is IOnycBondingCurve {
         string calldata symbol,
         string calldata memo
     ) external payable override returns (address tokenAddress) {
-        if (msg.value != creationFeeWeibarsValue) {
-            revert IncorrectCreationFee(creationFeeWeibarsValue, msg.value);
+        if (msg.value != creationFeeTinybarsValue) {
+            revert IncorrectCreationFee(creationFeeTinybarsValue, msg.value);
         }
         require(bytes(memo).length <= 100, "memo exceeds HTS 100-byte limit");
 
@@ -131,7 +141,7 @@ contract OnycBondingCurve is IOnycBondingCurve {
 
         int64 responseCode;
         (responseCode, tokenAddress) = htsPrecompile.createFungibleToken{
-            value: HTS_CREATION_BUFFER_WEIBARS
+            value: HTS_CREATION_BUFFER_TINYBARS
         }(token, TOTAL_SUPPLY, 8);
         if (responseCode != HTS_SUCCESS) revert HtsTokenCreationFailed(responseCode);
 
@@ -145,7 +155,7 @@ contract OnycBondingCurve is IOnycBondingCurve {
             graduated: false
         });
 
-        // Hedera refunds whatever of HTS_CREATION_BUFFER_WEIBARS the
+        // Hedera refunds whatever of HTS_CREATION_BUFFER_TINYBARS the
         // precompile didn't actually spend back into this contract's own
         // balance. What's left after that (msg.value - real HTS cost) is
         // this platform's margin on the flat creation fee - sweep it to
@@ -332,8 +342,8 @@ contract OnycBondingCurve is IOnycBondingCurve {
     }
 
     /// @inheritdoc IOnycBondingCurve
-    function creationFeeWeibars() external view override returns (uint256) {
-        return creationFeeWeibarsValue;
+    function creationFeeTinybars() external view override returns (uint256) {
+        return creationFeeTinybarsValue;
     }
 
     /// @inheritdoc IOnycBondingCurve
@@ -360,7 +370,7 @@ contract OnycBondingCurve is IOnycBondingCurve {
     }
 
     /// @notice Accepts the HTS precompile's automatic refund of unused
-    /// HTS_CREATION_BUFFER_WEIBARS during create(). Must exist for that
+    /// HTS_CREATION_BUFFER_TINYBARS during create(). Must exist for that
     /// refund to land rather than reverting the whole transaction.
     receive() external payable {}
 }

@@ -1,17 +1,24 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-const ether = ethers.parseEther;
+// "N HBAR" in tinybars (8 decimals) - confirmed live on Hedera testnet
+// (contracts/test/ValueScaleProbe.sol) that msg.value inside contract
+// execution is tinybar-scale, not the 18-decimal "ether" scale a plain
+// EVM background would suggest. A local Hardhat network doesn't do
+// Hedera's rescaling, so this mocked suite just needs to consistently
+// use the same scale the real contract does - named `ether` would be
+// actively misleading here, hence `hbar`.
+const hbar = (n) => ethers.parseUnits(String(n), 8);
 
 // Matches the contract's own constants (contracts/OnycBondingCurve.sol).
 const CURVE_SUPPLY = 800_000_000n * 10n ** 8n;
-const INITIAL_VIRTUAL_HBAR_RESERVE = ether("300");
-const HTS_CREATION_BUFFER_WEIBARS = ether("40");
-const MOCK_REAL_HTS_COST = ether("15");
+const INITIAL_VIRTUAL_HBAR_RESERVE = hbar("300");
+const HTS_CREATION_BUFFER_TINYBARS = hbar("40");
+const MOCK_REAL_HTS_COST = hbar("15");
 
-const CREATION_FEE = ether("45"); // >= HTS_CREATION_BUFFER_WEIBARS, per constructor's own check
+const CREATION_FEE = hbar("45"); // >= HTS_CREATION_BUFFER_TINYBARS, per constructor's own check
 const TRADING_FEE_BPS = 100; // 1%
-const FUNDING_GOAL = ether("500"); // small on purpose, so tests can actually reach graduation
+const FUNDING_GOAL = hbar("500"); // small on purpose, so tests can actually reach graduation
 
 describe("OnycBondingCurve", function () {
   let curve, mockHts, treasury, creator, buyer, seller, other;
@@ -43,7 +50,7 @@ describe("OnycBondingCurve", function () {
     it("rejects a creation fee below the HTS network-cost buffer", async function () {
       const Curve = await ethers.getContractFactory("OnycBondingCurve");
       await expect(
-        Curve.deploy(treasury.address, ether("39"), TRADING_FEE_BPS, FUNDING_GOAL, await mockHts.getAddress())
+        Curve.deploy(treasury.address, hbar("39"), TRADING_FEE_BPS, FUNDING_GOAL, await mockHts.getAddress())
       ).to.be.revertedWith("creation fee must cover HTS network cost");
     });
 
@@ -65,10 +72,10 @@ describe("OnycBondingCurve", function () {
   describe("create", function () {
     it("reverts with IncorrectCreationFee if msg.value doesn't match exactly", async function () {
       await expect(
-        curve.connect(creator).create("DogWifHat", "WIF", "ipfs://meta", { value: ether("44") })
+        curve.connect(creator).create("DogWifHat", "WIF", "ipfs://meta", { value: hbar("44") })
       )
         .to.be.revertedWithCustomError(curve, "IncorrectCreationFee")
-        .withArgs(CREATION_FEE, ether("44"));
+        .withArgs(CREATION_FEE, hbar("44"));
     });
 
     it("reverts if the memo exceeds 100 bytes", async function () {
@@ -118,11 +125,11 @@ describe("OnycBondingCurve", function () {
       await curve.connect(creator).create("Name", "SYM", "memo", { value: CREATION_FEE });
       const after = await ethers.provider.getBalance(treasury.address);
 
-      // Contract forwards HTS_CREATION_BUFFER_WEIBARS (40) to the mock
+      // Contract forwards HTS_CREATION_BUFFER_TINYBARS (40) to the mock
       // precompile; the mock refunds (40 - MOCK_REAL_HTS_COST) = 25 back.
       // Contract never spent the remaining (CREATION_FEE - buffer) = 5.
       // Total swept to treasury = 5 + 25 = 30.
-      const expectedMargin = CREATION_FEE - HTS_CREATION_BUFFER_WEIBARS + (HTS_CREATION_BUFFER_WEIBARS - MOCK_REAL_HTS_COST);
+      const expectedMargin = CREATION_FEE - HTS_CREATION_BUFFER_TINYBARS + (HTS_CREATION_BUFFER_TINYBARS - MOCK_REAL_HTS_COST);
       expect(after - before).to.equal(expectedMargin);
 
       // Nothing should be left stranded in the curve contract itself.
@@ -163,7 +170,7 @@ describe("OnycBondingCurve", function () {
 
     it("reverts with TokenNotFound for an address that was never created", async function () {
       await expect(
-        curve.connect(buyer).buy(other.address, 0, { value: ether("1") })
+        curve.connect(buyer).buy(other.address, 0, { value: hbar("1") })
       ).to.be.revertedWithCustomError(curve, "TokenNotFound");
     });
 
@@ -175,7 +182,7 @@ describe("OnycBondingCurve", function () {
     });
 
     it("quotes and buy() agree, and the buyer actually receives the tokens", async function () {
-      const hbarIn = ether("10");
+      const hbarIn = hbar("10");
       const expectedTokens = await curve.previewBuy(tokenAddress, hbarIn);
       expect(expectedTokens).to.be.greaterThan(0n);
 
@@ -189,7 +196,7 @@ describe("OnycBondingCurve", function () {
     });
 
     it("reverts with BuySlippageExceeded if minTokensOut is set too high", async function () {
-      const hbarIn = ether("10");
+      const hbarIn = hbar("10");
       const expectedTokens = await curve.previewBuy(tokenAddress, hbarIn);
       await expect(
         curve.connect(buyer).buy(tokenAddress, expectedTokens + 1n, { value: hbarIn })
@@ -197,7 +204,7 @@ describe("OnycBondingCurve", function () {
     });
 
     it("routes the trading fee to treasury and updates real/virtual reserves correctly", async function () {
-      const hbarIn = ether("10");
+      const hbarIn = hbar("10");
       const expectedFee = (hbarIn * BigInt(TRADING_FEE_BPS)) / 10000n;
       const hbarInAfterFee = hbarIn - expectedFee;
 
@@ -228,17 +235,17 @@ describe("OnycBondingCurve", function () {
 
     it("reverts with TokenAlreadyGraduated once the funding goal is hit", async function () {
       // FUNDING_GOAL is 500 ether; buy enough to cross it.
-      await curve.connect(buyer).buy(tokenAddress, 0, { value: ether("600") });
+      await curve.connect(buyer).buy(tokenAddress, 0, { value: hbar("600") });
       const meme = await curve.memeTokens(tokenAddress);
       expect(meme.graduated).to.equal(true);
 
       await expect(
-        curve.connect(buyer).buy(tokenAddress, 0, { value: ether("1") })
+        curve.connect(buyer).buy(tokenAddress, 0, { value: hbar("1") })
       ).to.be.revertedWithCustomError(curve, "TokenAlreadyGraduated");
     });
 
     it("emits Graduated exactly once, with the real HBAR raised", async function () {
-      await expect(curve.connect(buyer).buy(tokenAddress, 0, { value: ether("600") })).to.emit(
+      await expect(curve.connect(buyer).buy(tokenAddress, 0, { value: hbar("600") })).to.emit(
         curve,
         "Graduated"
       );
@@ -259,7 +266,7 @@ describe("OnycBondingCurve", function () {
       token = MockHtsToken.attach(tokenAddress);
 
       // Give `seller` some tokens to work with.
-      await curve.connect(seller).buy(tokenAddress, 0, { value: ether("10") });
+      await curve.connect(seller).buy(tokenAddress, 0, { value: hbar("10") });
     });
 
     it("reverts with ZeroAmount when tokenAmount is 0", async function () {
@@ -302,7 +309,7 @@ describe("OnycBondingCurve", function () {
     });
 
     it("a full buy-then-sell round trip never lets the trader extract more HBAR than they put in", async function () {
-      const hbarIn = ether("5");
+      const hbarIn = hbar("5");
       await curve.connect(buyer).buy(tokenAddress, 0, { value: hbarIn });
 
       const buyerTokenBalance = await token.balanceOf(buyer.address);
@@ -350,7 +357,7 @@ describe("OnycBondingCurve", function () {
         curve,
         "TokenNotFound"
       );
-      await expect(curve.previewBuy(other.address, ether("1"))).to.be.revertedWithCustomError(
+      await expect(curve.previewBuy(other.address, hbar("1"))).to.be.revertedWithCustomError(
         curve,
         "TokenNotFound"
       );
@@ -361,7 +368,7 @@ describe("OnycBondingCurve", function () {
     });
 
     it("exposes the configured fee/goal constants", async function () {
-      expect(await curve.creationFeeWeibars()).to.equal(CREATION_FEE);
+      expect(await curve.creationFeeTinybars()).to.equal(CREATION_FEE);
       expect(await curve.tradingFeeBps()).to.equal(TRADING_FEE_BPS);
       expect(await curve.fundingGoal()).to.equal(FUNDING_GOAL);
     });

@@ -63,21 +63,35 @@ pragma solidity ^0.8.24;
 /// and fixed the hard way once already:
 /// ============================================================================
 ///
-/// 1. DECIMALS: two different scales coexist in the same contract.
-///      - Native HBAR values (msg.value, any HBAR sent/received) are in
-///        18-decimal "weibar" units - standard EVM wei/ether semantics,
-///        which is what Hedera's JSON-RPC relay expects and what
-///        script.js's launch/trade code already produces (e.g.
-///        `feeWeibars = BigInt(hbar * 1e8) * 10n**10n`). virtualHbarReserve
-///        and realHbarReserve must use this same 18-decimal scale.
+/// 1. DECIMALS: two different scales coexist, and NEITHER is what an
+///    Ethereum background would suggest. Confirmed live against a real
+///    deployment on Hedera testnet (see contracts/test/ValueScaleProbe.sol
+///    and scripts/probe-value-scale.cjs) after an initial deploy with
+///    18-decimal constants failed every create() call with
+///    IncorrectCreationFee, despite the caller sending an apparently
+///    correct amount:
+///      - Inside contract execution, msg.value and address(this).balance
+///        report Hedera's native 8-decimal tinybars - e.g. sending "1 HBAR"
+///        (encoded the standard EVM way, as 10**18 in the transaction's
+///        outer value field) arrives as msg.value == 10**8, not 10**18.
+///        virtualHbarReserve, realHbarReserve, the creation fee, and the
+///        funding goal are therefore all in tinybars in this contract.
+///      - The OUTER transaction's value field - what a caller building an
+///        eth_sendTransaction/ethers call must put in {value: ...} - is
+///        still the standard 18-decimal EVM convention (what script.js's
+///        `feeWeibars = BigInt(hbar * 1e8) * 10n**10n` already produces
+///        correctly for other transfers). Hedera only translates between
+///        the two forms at that RPC boundary, not inside the EVM. So a
+///        caller reading e.g. creationFeeTinybars() from this contract
+///        must multiply by 10**10 before using it as a transaction's
+///        value - that conversion is the caller's job, not this
+///        contract's.
 ///      - Token amounts (the curve's own token reserves, balances,
 ///        getAmountOut results for token quantities) are in the token's
 ///        own 8 decimals, matching every ethers.parseUnits/formatUnits(_, 8)
-///        call already in coin.js.
-///      Mixing these up was not hypothetical - it's exactly the kind of
-///      bug this project's earlier contract attempts had to iterate
-///      through. Every function below that takes or returns an "amount"
-///      documents which scale it's in.
+///        call already in coin.js - this part was never in question.
+///      Every function below that takes or returns an "amount" documents
+///      which of these it's in.
 ///
 /// 2. HTS TOKEN CREATION CONSTRAINTS - confirmed working, after several
 ///    failed iterations, in this project's own history:
@@ -133,9 +147,9 @@ interface IOnycBondingCurve {
     struct MemeToken {
         address tokenAddress;       // HTS token address; this contract is its treasury
         address creatorAddress;    // wallet that called create()
-        uint256 virtualHbarReserve; // 18-decimal weibars
+        uint256 virtualHbarReserve; // 8-decimal tinybars
         uint256 virtualTokenReserve; // 8-decimal token units
-        uint256 realHbarReserve;    // 18-decimal weibars actually raised
+        uint256 realHbarReserve;    // 8-decimal tinybars actually raised
         uint256 tokensSold;         // 8-decimal token units, cumulative, informational
         bool graduated;             // true once realHbarReserve >= fundingGoal(); trading frozen
     }
@@ -161,14 +175,14 @@ interface IOnycBondingCurve {
         address indexed tokenAddress,
         address indexed buyer,
         uint256 amount,       // tokens received, 8 decimals
-        uint256 totalPrice    // weibars paid including fee, 18 decimals
+        uint256 totalPrice    // tinybars paid including fee, 8 decimals
     );
 
     event TokensSold(
         address indexed tokenAddress,
         address indexed seller,
         uint256 amount,       // tokens sold, 8 decimals
-        uint256 totalPrice    // weibars received net of fee, 18 decimals
+        uint256 totalPrice    // tinybars received net of fee, 8 decimals
     );
 
     /// @notice Emitted exactly once per token, the moment realHbarReserve
@@ -197,8 +211,8 @@ interface IOnycBondingCurve {
     // ------------------------------------------------------------------
 
     /// @notice Creates a new HTS token and its bonding curve in a single
-    /// transaction. Requires exactly creationFeeTinybarsWeibars() as
-    /// msg.value (18-decimal weibars), forwarded to treasury atomically -
+    /// transaction. Requires exactly creationFeeTinybars() as
+    /// msg.value (8-decimal tinybars), forwarded to treasury atomically -
     /// no separate follow-up transfer, no exchange-rate-precompile
     /// dependency, no retry loop on the frontend.
     /// @param name Token display name
@@ -215,7 +229,7 @@ interface IOnycBondingCurve {
     ) external payable returns (address tokenAddress);
 
     /// @notice Buys tokenAddress tokens with attached HBAR (msg.value, 18-
-    /// decimal weibars). Reverts with BuySlippageExceeded if the tokens
+    /// decimal tinybars). Reverts with BuySlippageExceeded if the tokens
     /// received would be less than minTokensOut (8-decimal token units),
     /// or TokenAlreadyGraduated if the curve is frozen.
     function buy(
@@ -227,8 +241,8 @@ interface IOnycBondingCurve {
     /// back to the curve for HBAR. The caller's account must already have
     /// tokenAddress associated (see the association note above) and must
     /// have approved/transferred correctly per HTS's ERC20 facade rules.
-    /// Reverts with SellSlippageExceeded if the HBAR received (18-decimal
-    /// weibars) would be less than minHbarOut. Unlike memejob's sellJob,
+    /// Reverts with SellSlippageExceeded if the HBAR received (8-decimal
+    /// tinybars) would be less than minHbarOut. Unlike memejob's sellJob,
     /// this has a slippage parameter at all - memejob's doesn't, which is
     /// the actual reason this app's slippage UI buttons have never been
     /// wireable on the sell side.
@@ -245,7 +259,7 @@ interface IOnycBondingCurve {
     /// @notice Quotes a buy or sell without executing it. Matches memejob's
     /// existing getAmountOut(token, amount, txType) call shape exactly -
     /// amount is ALWAYS a token quantity (8 decimals) in both directions:
-    /// txType 0 (buy) returns the HBAR cost (18-decimal weibars) for that
+    /// txType 0 (buy) returns the HBAR cost (8-decimal tinybars) for that
     /// many tokens; txType 1 (sell) returns the HBAR proceeds for selling
     /// that many tokens. Kept for drop-in compatibility with coin.js's
     /// existing price/market-cap display code.
@@ -262,7 +276,7 @@ interface IOnycBondingCurve {
     /// product formula is cleanly invertible, this contract can answer it
     /// directly, letting that binary search be deleted entirely once the
     /// frontend points at this contract.
-    /// @param hbarAmountIn 18-decimal weibars (before fee)
+    /// @param hbarAmountIn 8-decimal tinybars (before fee)
     /// @return tokensOut 8-decimal token units
     function previewBuy(
         address tokenAddress,
@@ -270,7 +284,7 @@ interface IOnycBondingCurve {
     ) external view returns (uint256 tokensOut);
 
     /// @param tokenAmountIn 8-decimal token units
-    /// @return hbarOut 18-decimal weibars (after fee)
+    /// @return hbarOut 8-decimal tinybars (after fee)
     function previewSell(
         address tokenAddress,
         uint256 tokenAmountIn
@@ -280,16 +294,16 @@ interface IOnycBondingCurve {
     // View functions - config & state
     // ------------------------------------------------------------------
 
-    /// @notice Flat HBAR fee (18-decimal weibars) required to create a
+    /// @notice Flat HBAR fee (8-decimal tinybars) required to create a
     /// token. A plain constant set at deploy time - no precompile lookup,
     /// no hourly-boundary flakiness.
-    function creationFeeWeibars() external view returns (uint256);
+    function creationFeeTinybars() external view returns (uint256);
 
     /// @notice Trading fee in basis points (e.g. 100 = 1%), taken on every
     /// buy and sell.
     function tradingFeeBps() external view returns (uint16);
 
-    /// @notice Real HBAR (18-decimal weibars) a token's realHbarReserve
+    /// @notice Real HBAR (8-decimal tinybars) a token's realHbarReserve
     /// must reach to graduate.
     function fundingGoal() external view returns (uint256);
 
