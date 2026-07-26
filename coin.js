@@ -768,7 +768,7 @@ function setupTradeInterface(tokenAddress, tokenData) {
                     // previewBuy answers "how many tokens for this much
                     // HBAR" directly and exactly - no approximation needed,
                     // unlike memejob below.
-                    labelReceive.textContent = 'Amount to receive';
+                    labelReceive.textContent = 'Amount to receive (Tokens)';
                     const tokensOut = await routerContract.previewBuy(tokenAddress, hbarBudgetTinybars);
                     tradeReceive.value = ethers.formatUnits(tokensOut, 8);
                 } else {
@@ -778,7 +778,7 @@ function setupTradeInterface(tokenAddress, tokenData) {
                     // directly with the HBAR figure. Approximate via the current
                     // spot price (cost of exactly one token) instead; the exact
                     // amount is resolved with a real binary search at submit time.
-                    labelReceive.textContent = 'Amount to receive (approx.)';
+                    labelReceive.textContent = 'Amount to receive (approx., Tokens)';
                     const oneTokenCost = await routerContract.getAmountOut(tokenAddress, 100000000n, 0);
                     if (oneTokenCost > 0n) {
                         const approxTokens = (hbarBudgetTinybars * 100000000n) / oneTokenCost;
@@ -788,7 +788,7 @@ function setupTradeInterface(tokenAddress, tokenData) {
                     }
                 }
             } else {
-                labelReceive.textContent = 'Amount to receive';
+                labelReceive.textContent = 'Amount to receive (HBAR)';
                 const amountIn = ethers.parseUnits(amount.toString(), 8); // sell amount is already in tokens
                 const amountOut = await routerContract.getAmountOut(tokenAddress, amountIn, 1);
                 tradeReceive.value = ethers.formatUnits(amountOut, 8);
@@ -851,7 +851,7 @@ function setupTradeInterface(tokenAddress, tokenData) {
         tradeSubmitBtn.style.background = '#ef4444';
         document.getElementById('trade-balance').textContent = window.currentTokenBalance ? `${window.currentTokenBalance} Tokens` : '0 Tokens';
         tradeAmount.min = '0';
-        labelPay.textContent = 'Amount to pay';
+        labelPay.textContent = 'Amount to pay (Tokens)';
         tradeWarning.style.display = 'none';
         updateReceiveAmount();
     };
