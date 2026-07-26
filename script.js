@@ -552,46 +552,47 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const tx = await onycContract.create(name, symbol, memo, { value: valueForTx });
                 await tx.wait();
 
-                // Read the emitted logs from the mirror node rather than
-                // the wallet-relayed receipt.logs - confirmed live that
-                // HashPack's own eth_getTransactionReceipt can come back
-                // with an empty logs array for a real, successful create()
-                // call even though the MemeCreated event genuinely was
-                // emitted on-chain (verified directly against the mirror
-                // node for a transaction that hit exactly this). Mirror
-                // node indexing lag can run past 10+ seconds under real
-                // conditions (an 8-attempt/1.5s budget - ~12s - genuinely
-                // wasn't enough for a real transaction whose log was
-                // confirmed present moments later), so this budget is
-                // generous - 20 attempts, 2s apart, ~40s worst case - and
-                // logs each miss so a genuine failure is diagnosable
-                // instead of silent. The loop still exits the instant the
-                // event is found, so this adds no latency in the common case.
+                // Read create()'s own return value (an address) from the
+                // mirror node's call_result field, rather than hunting for
+                // the MemeCreated event log. Two real, live-tested reasons:
+                // 1) the wallet-relayed receipt.logs (via tx.wait() through
+                //    HashPack's own eth_getTransactionReceipt) can come back
+                //    empty for a real, successful create() call even though
+                //    the event genuinely was emitted on-chain.
+                // 2) trying to work around that by polling the mirror node
+                //    for the EVENT LOG instead still isn't reliable - a real
+                //    transaction's log was confirmed absent from twenty
+                //    consecutive polls over ~40s, then present when checked
+                //    again shortly after. The event log is populated by a
+                //    separate, slower indexing pass; call_result is the
+                //    function's direct EVM return value, part of the base
+                //    contract-result record, and doesn't depend on that
+                //    pass - so it should be available as soon as the
+                //    transaction itself is indexed at all.
                 btn.innerHTML = `<span>Confirming on-chain...</span>`;
-                let createdEvent = null;
-                for (let attempt = 0; attempt < 20 && !createdEvent; attempt++) {
+                let createdTokenAddress = null;
+                for (let attempt = 0; attempt < 15 && !createdTokenAddress; attempt++) {
                     if (attempt > 0) await new Promise(r => setTimeout(r, 2000));
                     try {
                         const resultRes = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${tx.hash}`);
                         if (!resultRes.ok) {
-                            console.warn(`Mirror node poll ${attempt + 1}/20: HTTP ${resultRes.status}, retrying...`);
+                            console.warn(`Mirror node poll ${attempt + 1}/15: HTTP ${resultRes.status}, retrying...`);
                             continue;
                         }
                         const contractResult = await resultRes.json();
-                        createdEvent = (contractResult.logs || [])
-                            .map(log => { try { return onycContract.interface.parseLog({ topics: log.topics, data: log.data }); } catch { return null; } })
-                            .find(e => e?.name === 'MemeCreated') || null;
-                        if (!createdEvent) {
-                            console.warn(`Mirror node poll ${attempt + 1}/20: no MemeCreated log yet, retrying...`);
+                        if (contractResult.call_result && contractResult.call_result !== '0x') {
+                            createdTokenAddress = '0x' + contractResult.call_result.replace(/^0x/, '').slice(-40);
+                        } else {
+                            console.warn(`Mirror node poll ${attempt + 1}/15: call_result not yet available, retrying...`);
                         }
                     } catch (e) {
-                        console.warn(`Mirror node poll ${attempt + 1}/20 failed, retrying:`, e);
+                        console.warn(`Mirror node poll ${attempt + 1}/15 failed, retrying:`, e);
                     }
                 }
-                if (!createdEvent) {
-                    throw new Error("Token was created, but the MemeCreated event wasn't found to read its address.");
+                if (!createdTokenAddress) {
+                    throw new Error("Token was created, but its address couldn't be read back from the mirror node.");
                 }
-                newTokenAddress = createdEvent.args.tokenAddress;
+                newTokenAddress = createdTokenAddress;
                 routerAddressForToken = ONYC_BONDING_CURVE_ADDRESS;
 
                 // No separate "platform launch fee" transfer here, unlike
