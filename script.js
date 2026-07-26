@@ -1,11 +1,11 @@
 import { Buffer } from 'buffer';
 import { supabase } from './supabase.js';
-import { formatUnits } from 'ethers';
+import { formatUnits, BrowserProvider, Contract, JsonRpcProvider } from 'ethers';
 import { appkit } from './wallet.js';
 import { evmAddressToHederaId, resolveAccountEvmAddress, fetchTopTokensByVolume, fetchTokenMarketStats, fetchCreationFeeTinybars } from './mirror-trades.js';
 import { isWatchlisted, toggleWatchlist } from './watchlist.js';
 import { wrapProviderForLegacyFees } from './provider-fee-fix.js';
-import { MEMEJOB_ADDRESS } from './router-registry.js';
+import { MEMEJOB_ADDRESS, ONYC_BONDING_CURVE_ADDRESS, ONYC_BONDING_CURVE_ABI } from './router-registry.js';
 
 // @hashgraph/sdk and @buidlerlabs/memejob-sdk-js (which pulls in viem) are
 // ~3.5MB combined - dynamically imported only where actually needed (the
@@ -371,28 +371,59 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // Show the real, current total cost to launch: the dynamic token-creation
-    // fee (Hedera's exchange rate precompile, ~$1 worth of HBAR, fluctuates
-    // with the rate) + the fixed 5 HBAR initial buy bundled into the same
-    // creation transaction + the separate 5 HBAR platform launch fee.
+    // Show the real, current total cost to launch. memejob's cost is the
+    // dynamic token-creation fee (Hedera's exchange rate precompile, ~$1
+    // worth of HBAR, fluctuates with the rate) + the fixed 5 HBAR initial
+    // buy bundled into the same creation transaction + the separate 5 HBAR
+    // platform launch fee. OnycBondingCurve's cost is just its own flat
+    // creationFeeTinybars() - no initial buy or separate platform fee, since
+    // that fee already sweeps the platform's margin to treasury atomically
+    // inside create() itself.
+    const betaToggle = document.getElementById('onyc-curve-beta-toggle');
     const summaryTotalCostElem = document.getElementById('summary-total-cost');
     if (summaryTotalCostElem) {
         const summaryBreakdownElem = document.getElementById('summary-total-breakdown');
-        const INITIAL_BUY_HBAR = 5; // matches the 500000000n tinybars amount passed to createToken()
-        fetchCreationFeeTinybars().then(creationFeeTinybars => {
-            const creationFeeHbar = Number(creationFeeTinybars) / 1e8;
-            if (creationFeeHbar > 0) {
-                const total = creationFeeHbar + INITIAL_BUY_HBAR + LAUNCH_FEE_HBAR;
-                summaryTotalCostElem.textContent = `~${total.toFixed(2)} HBAR`;
-                if (summaryBreakdownElem) {
-                    summaryBreakdownElem.textContent = `Creation fee ~${creationFeeHbar.toFixed(2)} + initial buy ${INITIAL_BUY_HBAR} + platform fee ${LAUNCH_FEE_HBAR}`;
-                }
+        const INITIAL_BUY_HBAR = 5; // matches the 500000000n tinybars amount passed to createToken() - memejob only
+
+        let onycCreationFeeTinybars = null; // flat constant - fetched once, then cached
+
+        const updateTotalCostDisplay = () => {
+            if (betaToggle?.checked) {
+                summaryTotalCostElem.textContent = 'Loading...';
+                const readProvider = new JsonRpcProvider("https://testnet.hashio.io/api");
+                const onycContract = new Contract(ONYC_BONDING_CURVE_ADDRESS, ONYC_BONDING_CURVE_ABI, readProvider);
+                (onycCreationFeeTinybars !== null ? Promise.resolve(onycCreationFeeTinybars) : onycContract.creationFeeTinybars())
+                    .then(fee => {
+                        onycCreationFeeTinybars = fee;
+                        const feeHbar = Number(fee) / 1e8;
+                        summaryTotalCostElem.textContent = `${feeHbar.toFixed(2)} HBAR`;
+                        if (summaryBreakdownElem) {
+                            summaryBreakdownElem.textContent = `Flat creation fee (new contract, Beta) - no separate platform fee`;
+                        }
+                    })
+                    .catch(() => {
+                        summaryTotalCostElem.textContent = 'Unavailable';
+                    });
             } else {
-                summaryTotalCostElem.textContent = 'Unavailable';
+                fetchCreationFeeTinybars().then(creationFeeTinybars => {
+                    const creationFeeHbar = Number(creationFeeTinybars) / 1e8;
+                    if (creationFeeHbar > 0) {
+                        const total = creationFeeHbar + INITIAL_BUY_HBAR + LAUNCH_FEE_HBAR;
+                        summaryTotalCostElem.textContent = `~${total.toFixed(2)} HBAR`;
+                        if (summaryBreakdownElem) {
+                            summaryBreakdownElem.textContent = `Creation fee ~${creationFeeHbar.toFixed(2)} + initial buy ${INITIAL_BUY_HBAR} + platform fee ${LAUNCH_FEE_HBAR}`;
+                        }
+                    } else {
+                        summaryTotalCostElem.textContent = 'Unavailable';
+                    }
+                }).catch(() => {
+                    summaryTotalCostElem.textContent = 'Unavailable';
+                });
             }
-        }).catch(() => {
-            summaryTotalCostElem.textContent = 'Unavailable';
-        });
+        };
+
+        updateTotalCostDisplay();
+        betaToggle?.addEventListener('change', updateTotalCostDisplay);
     }
 
     // Explicitly bind the launch submit button
@@ -494,6 +525,46 @@ document.addEventListener('DOMContentLoaded', async () => {
             btn.innerHTML = `<span>Approving Meme Launch...</span>`;
 
             if (window.ensureHederaTestnet) await window.ensureHederaTestnet();
+
+            const useOnycBondingCurve = betaToggle?.checked === true;
+            let newTokenAddress;
+            let routerAddressForToken;
+
+            if (useOnycBondingCurve) {
+                // New first-party contract: flat creation fee, no
+                // exchange-rate-precompile dependency, so none of the
+                // fee-window polling/retry logic in the memejob branch
+                // below applies here at all.
+                const universalProvider = await window.getUniversalProvider();
+                if (!universalProvider) throw new Error("Wallet provider not initialized or not found.");
+                const browserProvider = new BrowserProvider(universalProvider);
+                const signer = await browserProvider.getSigner();
+                const onycContract = new Contract(ONYC_BONDING_CURVE_ADDRESS, ONYC_BONDING_CURVE_ABI, signer);
+
+                const creationFeeTinybars = await onycContract.creationFeeTinybars();
+                // Outer transaction value is 18-decimal - Hedera only
+                // rescales to the contract's native 8-decimal tinybars at
+                // the RPC boundary (see contracts/IOnycBondingCurve.sol's
+                // decimals section).
+                const valueForTx = creationFeeTinybars * 10n ** 10n;
+
+                btn.innerHTML = `<span>Confirm in wallet...</span>`;
+                const tx = await onycContract.create(name, symbol, memo, { value: valueForTx });
+                const receipt = await tx.wait();
+                const createdEvent = receipt.logs
+                    .map(log => { try { return onycContract.interface.parseLog(log); } catch { return null; } })
+                    .find(e => e?.name === 'MemeCreated');
+                if (!createdEvent) {
+                    throw new Error("Token was created, but the MemeCreated event wasn't found to read its address.");
+                }
+                newTokenAddress = createdEvent.args.tokenAddress;
+                routerAddressForToken = ONYC_BONDING_CURVE_ADDRESS;
+
+                // No separate "platform launch fee" transfer here, unlike
+                // memejob below - the flat creation fee already sweeps the
+                // platform's margin to treasury atomically inside create()
+                // itself.
+            } else {
 
             // Setup MJClient
             const [{ ContractId }, { CONTRACT_DEPLOYMENTS, createAdapter, getChain, MJClient, EvmAdapter }] = await Promise.all([
@@ -636,7 +707,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log("Token Created!", mjToken.tokenId);
             const tokenIdStr = mjToken.tokenId.toString();
             const parts = tokenIdStr.split('.');
-            let newTokenAddress = `0x000000000000000000000000${parseInt(parts[2]).toString(16).padStart(16, '0')}`;
+            newTokenAddress = `0x000000000000000000000000${parseInt(parts[2]).toString(16).padStart(16, '0')}`;
+            routerAddressForToken = MEMEJOB_ADDRESS;
 
             // Platform launch fee: a flat 5 HBAR charged to the launcher,
             // collected as a plain transfer straight to the treasury account
@@ -675,6 +747,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 console.warn('VITE_TREASURY_ACCOUNT_ID not configured - skipping launch fee.');
             }
+
+            } // end memejob branch (useOnycBondingCurve === false)
 
             btn.innerHTML = `<span>Finalizing...</span>`;
 
@@ -736,18 +810,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     // them here.
                     //
                     // router_address records which bonding-curve contract this
-                    // token lives on (see router-registry.js). This launch flow
-                    // still only ever creates tokens via memejob - the actual
-                    // OnycBondingCurve launch path is a separate, not-yet-done
-                    // phase - so it's set explicitly here rather than relying
-                    // solely on the column's DB-level default.
+                    // token lives on (see router-registry.js) - memejob unless
+                    // the Beta toggle routed this launch to OnycBondingCurve.
                     const payload = {
                         token_address: newTokenAddress.toLowerCase(),
                         creator_address: currentUserEvm.toLowerCase(),
                         name: name,
                         symbol: symbol,
                         image_url: finalDbImageUrl,
-                        router_address: MEMEJOB_ADDRESS
+                        router_address: routerAddressForToken
                     };
                     console.log("Payload being sent to Supabase:", { token_address: payload.token_address, creator_address: payload.creator_address });
                     const { error } = await supabase.from('meme_tokens').insert([payload]);
