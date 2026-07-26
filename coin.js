@@ -4,7 +4,7 @@ import { evmAddressToHederaId, fetchTokenTrades, fetchTokenHolders, fetchHbarUsd
 import { isWatchlisted, toggleWatchlist } from './watchlist.js';
 import { wrapProviderForLegacyFees } from './provider-fee-fix.js';
 import { getAlertsForToken, addAlert, removeAlert, checkAlerts } from './alerts.js';
-import { MEMEJOB_ADDRESS, MEMEJOB_ABI } from './router-registry.js';
+import { MEMEJOB_ADDRESS, getRouterForToken } from './router-registry.js';
 
 // @hashgraph/sdk and @buidlerlabs/memejob-sdk-js (which pulls in viem) are
 // ~3.5MB combined - dynamically imported only where actually needed (the
@@ -241,7 +241,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // 6. Setup Trading Logic
-        setupTradeInterface(tokenAddress);
+        setupTradeInterface(tokenAddress, tokenData);
 
     } catch (err) {
         console.error(err);
@@ -451,16 +451,19 @@ function renderHoldersTable(holders) {
 // with near-zero trades). Easy to tune.
 const MIN_BUY_HBAR = 1;
 
-// The router's getAmountOut always takes a TOKEN quantity and returns its
-// HBAR cost (txType 0) or HBAR proceeds (txType 1) - there is no "give me
-// tokens for this much HBAR" query on-chain, and buyJob itself is called
-// with a token quantity too (the SDK's buy() computes and attaches the
-// HBAR cost automatically). So "I want to spend X HBAR" has to be solved
-// by searching for the largest token quantity whose cost doesn't exceed X
-// - cost is monotonically increasing in quantity on a bonding curve, so a
-// bounded binary search finds it in a handful of calls. Verified against
-// the live contract: budgeting 5 HBAR correctly resolves to ~320,085
-// tokens (not the ~5 tokens a naive "amount == HBAR" reading would buy).
+// Only needed for memejob tokens. The router's getAmountOut always takes
+// a TOKEN quantity and returns its HBAR cost (txType 0) or HBAR proceeds
+// (txType 1) - there is no "give me tokens for this much HBAR" query on
+// memejob, and buyJob itself is called with a token quantity too (the
+// SDK's buy() computes and attaches the HBAR cost automatically). So "I
+// want to spend X HBAR" has to be solved by searching for the largest
+// token quantity whose cost doesn't exceed X - cost is monotonically
+// increasing in quantity on a bonding curve, so a bounded binary search
+// finds it in a handful of calls. Verified against the live contract:
+// budgeting 5 HBAR correctly resolves to ~320,085 tokens (not the ~5
+// tokens a naive "amount == HBAR" reading would buy). OnycBondingCurve
+// tokens don't need this at all - previewBuy() answers the same question
+// directly in one call (see setupTradeInterface's buy branch below).
 async function findTokenAmountForHbarBudget(routerContract, tokenAddress, hbarBudgetTinybars) {
     if (hbarBudgetTinybars <= 0n) return 0n;
     const oneTokenCost = await routerContract.getAmountOut(tokenAddress, 100000000n, 0);
@@ -483,21 +486,65 @@ async function findTokenAmountForHbarBudget(routerContract, tokenAddress, hbarBu
     return lo;
 }
 
-function setupTradeInterface(tokenAddress) {
+// HTS requires an account to associate a token before it can receive it -
+// a rule OnycBondingCurve can't waive on a user's behalf (memejob tokens
+// don't need this handled here; either its contract manages it
+// internally or testnet accounts commonly have open auto-association
+// slots, and it's been working without any association code in this file
+// at all). associateToken is a plain HTS precompile call any account can
+// make for itself, so this fits the same window.getUniversalProvider()
+// pattern as every other wallet interaction in this file - no need for
+// @hashgraph/sdk's native TokenAssociateTransaction.
+const HTS_PRECOMPILE_ADDRESS = '0x0000000000000000000000000000000000000167';
+const ASSOCIATE_TOKEN_ABI = ["function associateToken(address account, address token) external returns (int64 responseCode)"];
+
+async function isTokenAssociated(userAddress, tokenHederaId) {
+    try {
+        const res = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/accounts/${userAddress}/tokens?token.id=${tokenHederaId}`);
+        if (!res.ok) return false;
+        const data = await res.json();
+        return Array.isArray(data.tokens) && data.tokens.length > 0;
+    } catch (e) {
+        console.warn('Could not check token association, will attempt to associate defensively:', e);
+        return false;
+    }
+}
+
+async function ensureTokenAssociated(signer, userAddress, tokenAddress) {
+    const tokenHederaId = evmAddressToHederaId(tokenAddress);
+    if (await isTokenAssociated(userAddress, tokenHederaId)) return;
+
+    // Best-effort: mirror node indexing can lag, so this can fire even
+    // when the account is already associated (e.g. via auto-association
+    // that hasn't shown up in a query yet) - HTS returns a non-fatal
+    // "already associated" code in that case. Don't let a failure here
+    // block the trade; the buy() call right after this is the actual
+    // authoritative check; it throws its own clear HtsTransferFailed if
+    // association is genuinely still missing.
+    try {
+        const hts = new ethers.Contract(HTS_PRECOMPILE_ADDRESS, ASSOCIATE_TOKEN_ABI, signer);
+        const tx = await hts.associateToken(userAddress, tokenAddress);
+        await tx.wait();
+    } catch (e) {
+        console.warn('Token association attempt failed (may already be associated) - proceeding with buy anyway:', e);
+    }
+}
+
+function setupTradeInterface(tokenAddress, tokenData) {
     let currentMode = 'buy';
     let currentSlippage = 0.01; // 1%
-    
+
     const tabBuy = document.getElementById('tab-buy');
     const tabSell = document.getElementById('tab-sell');
     const tradeSubmitBtn = document.getElementById('trade-submit-btn');
     const tradeAmount = document.getElementById('trade-amount');
     const tradeReceive = document.getElementById('trade-receive');
-    
-    // This trade panel only talks to memejob so far - routing a given
-    // token to OnycBondingCurve instead (via getRouterForToken) is a
-    // separate, not-yet-done phase (see router-registry.js).
-    const ROUTER_ADDRESS = MEMEJOB_ADDRESS;
-    const ROUTER_ABI = MEMEJOB_ABI;
+
+    // Resolved from tokenData.router_address (see router-registry.js) -
+    // defaults to memejob for any token that predates the migration or
+    // came from the mirror-node fallback path (which has no
+    // router_address at all).
+    const { address: ROUTER_ADDRESS, abi: ROUTER_ABI, isOnycBondingCurve } = getRouterForToken(tokenData);
 
     const provider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
     const routerContract = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, provider);
@@ -575,14 +622,28 @@ function setupTradeInterface(tokenAddress) {
             // contract (was a hardcoded "6.9%" for every token before -
             // verified against several real tokens: a heavily-traded one
             // shows meaningfully higher progress than freshly-launched ones,
-            // confirming this is the real underlying mechanic).
+            // confirming this is the real underlying mechanic). Both
+            // contracts express these in the same native tinybar scale, so
+            // the percentage math itself doesn't change between them - only
+            // the function/field names do (memejob's FUNDING_GOAL/fundsRaised
+            // vs OnycBondingCurve's fundingGoal/realHbarReserve).
             try {
-                if (fundingGoalTinybars === null) {
-                    fundingGoalTinybars = await routerContract.FUNDING_GOAL();
+                let fundsRaisedTinybars;
+                if (isOnycBondingCurve) {
+                    if (fundingGoalTinybars === null) {
+                        fundingGoalTinybars = await routerContract.fundingGoal();
+                    }
+                    const meme = await routerContract.memeTokens(tokenAddress);
+                    fundsRaisedTinybars = meme.realHbarReserve;
+                } else {
+                    if (fundingGoalTinybars === null) {
+                        fundingGoalTinybars = await routerContract.FUNDING_GOAL();
+                    }
+                    const mapping = await routerContract.addressToMemeTokenMapping(tokenAddress);
+                    fundsRaisedTinybars = mapping.fundsRaised;
                 }
-                const mapping = await routerContract.addressToMemeTokenMapping(tokenAddress);
                 const progressPct = fundingGoalTinybars > 0n
-                    ? Math.min(100, (Number(mapping.fundsRaised) / Number(fundingGoalTinybars)) * 100)
+                    ? Math.min(100, (Number(fundsRaisedTinybars) / Number(fundingGoalTinybars)) * 100)
                     : 0;
                 document.getElementById('stat-progress-value').textContent = `${progressPct.toFixed(progressPct < 1 ? 4 : 1)}%`;
                 document.getElementById('progress-bar-fill').style.width = `${progressPct}%`;
@@ -701,20 +762,30 @@ function setupTradeInterface(tokenAddress) {
                     tradeWarning.style.display = 'none';
                 }
 
-                // "Amount to pay" is HBAR here, but getAmountOut only ever
-                // takes a TOKEN quantity (see findTokenAmountForHbarBudget
-                // above) - so a live per-keystroke preview can't call it
-                // directly with the HBAR figure. Approximate via the current
-                // spot price (cost of exactly one token) instead; the exact
-                // amount is resolved with a real binary search at submit time.
-                labelReceive.textContent = 'Amount to receive (approx.)';
                 const hbarBudgetTinybars = ethers.parseUnits(amount.toString(), 8);
-                const oneTokenCost = await routerContract.getAmountOut(tokenAddress, 100000000n, 0);
-                if (oneTokenCost > 0n) {
-                    const approxTokens = (hbarBudgetTinybars * 100000000n) / oneTokenCost;
-                    tradeReceive.value = ethers.formatUnits(approxTokens, 8);
+
+                if (isOnycBondingCurve) {
+                    // previewBuy answers "how many tokens for this much
+                    // HBAR" directly and exactly - no approximation needed,
+                    // unlike memejob below.
+                    labelReceive.textContent = 'Amount to receive';
+                    const tokensOut = await routerContract.previewBuy(tokenAddress, hbarBudgetTinybars);
+                    tradeReceive.value = ethers.formatUnits(tokensOut, 8);
                 } else {
-                    tradeReceive.value = '';
+                    // "Amount to pay" is HBAR here, but getAmountOut only ever
+                    // takes a TOKEN quantity (see findTokenAmountForHbarBudget
+                    // above) - so a live per-keystroke preview can't call it
+                    // directly with the HBAR figure. Approximate via the current
+                    // spot price (cost of exactly one token) instead; the exact
+                    // amount is resolved with a real binary search at submit time.
+                    labelReceive.textContent = 'Amount to receive (approx.)';
+                    const oneTokenCost = await routerContract.getAmountOut(tokenAddress, 100000000n, 0);
+                    if (oneTokenCost > 0n) {
+                        const approxTokens = (hbarBudgetTinybars * 100000000n) / oneTokenCost;
+                        tradeReceive.value = ethers.formatUnits(approxTokens, 8);
+                    } else {
+                        tradeReceive.value = '';
+                    }
                 }
             } else {
                 labelReceive.textContent = 'Amount to receive';
@@ -816,54 +887,113 @@ function setupTradeInterface(tokenAddress) {
             const accounts = await universalProvider.request({ method: 'eth_accounts' });
             const userAddress = accounts?.[0];
 
-            // Set up MemeJob Client
-            const [{ ContractId }, { CONTRACT_DEPLOYMENTS, createAdapter, getChain, MJClient, EvmAdapter }] = await Promise.all([
-                import('@hashgraph/sdk'),
-                import('@buidlerlabs/memejob-sdk-js')
-            ]);
-            const chain = getChain('testnet');
-            const adapter = createAdapter(EvmAdapter, {
-                ethereumProvider: wrapProviderForLegacyFees(universalProvider || window.ethereum)
-            });
-            const client = new MJClient(adapter, {
-                chain: chain,
-                contractId: ContractId.fromEvmAddress(0, 0, CONTRACT_DEPLOYMENTS.testnet.evmAddress),
-            });
+            if (isOnycBondingCurve) {
+                // OnycBondingCurve has no SDK - plain ethers calls against
+                // the ABI, same pattern as every other wallet interaction
+                // in this file. NOTE: awardPointsForTrade below currently
+                // only verifies trades against memejob's contract address
+                // (api/award-points.js) - updating it to accept either
+                // contract is a separate, not-yet-done phase, so points
+                // won't be awarded for these trades yet even though the
+                // trade itself works correctly.
+                const browserProvider = new ethers.BrowserProvider(universalProvider);
+                const signer = await browserProvider.getSigner();
+                const routerWithSigner = routerContract.connect(signer);
 
-            // Need to pass the native HTS address if tokenAddress is EVM
-            const targetAddress = evmAddressToHederaId(tokenAddress);
+                if (currentMode === 'buy') {
+                    const hbarBudgetTinybars = ethers.parseUnits(amount.toString(), 8);
 
-            console.log("Getting token instance from SDK...");
-            const mjToken = await client.getToken(targetAddress);
+                    tradeSubmitBtn.textContent = "Checking token association...";
+                    await ensureTokenAssociated(signer, userAddress, tokenAddress);
 
-            if (currentMode === 'buy') {
-                // "Amount to pay" is HBAR the user wants to spend, but
-                // buy({amount}) - and the on-chain buyJob it calls - takes a
-                // TOKEN quantity, not HBAR (confirmed against the live
-                // contract). Resolve the token amount that actually costs
-                // (up to) the entered HBAR budget before buying.
-                tradeSubmitBtn.textContent = "Finding best price...";
-                const hbarBudgetTinybars = ethers.parseUnits(amount.toString(), 8);
-                const tokenAmount = await findTokenAmountForHbarBudget(routerContract, tokenAddress, hbarBudgetTinybars);
-                if (tokenAmount <= 0n) {
-                    throw new Error("Could not find a valid token amount for that HBAR budget.");
+                    const tokensOut = await routerContract.previewBuy(tokenAddress, hbarBudgetTinybars);
+                    if (tokensOut <= 0n) {
+                        throw new Error("Could not price this buy.");
+                    }
+                    const slippageBps = BigInt(Math.round(currentSlippage * 10000));
+                    const minTokensOut = tokensOut - (tokensOut * slippageBps / 10000n);
+
+                    // Outer transaction value is 18-decimal - Hedera only
+                    // rescales to the contract's native 8-decimal tinybars
+                    // at the RPC boundary (see contracts/IOnycBondingCurve.sol's
+                    // decimals section).
+                    const valueForTx = hbarBudgetTinybars * 10n ** 10n;
+
+                    tradeSubmitBtn.textContent = "Confirm in wallet...";
+                    const tx = await routerWithSigner.buy(tokenAddress, minTokensOut, { value: valueForTx });
+                    await tx.wait();
+                    awardPointsForTrade({ transactionIdOrHash: tx.hash }, userAddress);
+                } else {
+                    const tokenAmountIn = ethers.parseUnits(amount.toString(), 8);
+
+                    tradeSubmitBtn.textContent = "Approve in wallet...";
+                    const erc20WithSigner = new ethers.Contract(
+                        tokenAddress,
+                        ["function approve(address spender, uint256 amount) returns (bool)"],
+                        signer
+                    );
+                    const approveTx = await erc20WithSigner.approve(ROUTER_ADDRESS, tokenAmountIn);
+                    await approveTx.wait();
+
+                    const hbarOut = await routerContract.previewSell(tokenAddress, tokenAmountIn);
+                    const slippageBps = BigInt(Math.round(currentSlippage * 10000));
+                    const minHbarOut = hbarOut - (hbarOut * slippageBps / 10000n);
+
+                    tradeSubmitBtn.textContent = "Confirm in wallet...";
+                    const tx = await routerWithSigner.sell(tokenAddress, tokenAmountIn, minHbarOut);
+                    await tx.wait();
+                    awardPointsForTrade({ transactionIdOrHash: tx.hash }, userAddress);
                 }
-                tradeSubmitBtn.textContent = "Confirm in wallet...";
-                console.log("Buying via SDK - HBAR budget:", hbarBudgetTinybars.toString(), "-> token amount:", tokenAmount.toString());
-                const result = await mjToken.buy({
-                    amount: tokenAmount
-                });
-                console.log("Buy result:", result);
-                awardPointsForTrade(result, userAddress);
             } else {
-                const amountIn = ethers.parseUnits(amount.toString(), 8); // sell amount is already in tokens
-                console.log("Selling via SDK with amount:", amountIn.toString());
-                const result = await mjToken.sell({
-                    amount: amountIn,
-                    instant: true
+                // Set up MemeJob Client
+                const [{ ContractId }, { CONTRACT_DEPLOYMENTS, createAdapter, getChain, MJClient, EvmAdapter }] = await Promise.all([
+                    import('@hashgraph/sdk'),
+                    import('@buidlerlabs/memejob-sdk-js')
+                ]);
+                const chain = getChain('testnet');
+                const adapter = createAdapter(EvmAdapter, {
+                    ethereumProvider: wrapProviderForLegacyFees(universalProvider || window.ethereum)
                 });
-                console.log("Sell result:", result);
-                awardPointsForTrade(result, userAddress);
+                const client = new MJClient(adapter, {
+                    chain: chain,
+                    contractId: ContractId.fromEvmAddress(0, 0, CONTRACT_DEPLOYMENTS.testnet.evmAddress),
+                });
+
+                // Need to pass the native HTS address if tokenAddress is EVM
+                const targetAddress = evmAddressToHederaId(tokenAddress);
+
+                console.log("Getting token instance from SDK...");
+                const mjToken = await client.getToken(targetAddress);
+
+                if (currentMode === 'buy') {
+                    // "Amount to pay" is HBAR the user wants to spend, but
+                    // buy({amount}) - and the on-chain buyJob it calls - takes a
+                    // TOKEN quantity, not HBAR (confirmed against the live
+                    // contract). Resolve the token amount that actually costs
+                    // (up to) the entered HBAR budget before buying.
+                    tradeSubmitBtn.textContent = "Finding best price...";
+                    const hbarBudgetTinybars = ethers.parseUnits(amount.toString(), 8);
+                    const tokenAmount = await findTokenAmountForHbarBudget(routerContract, tokenAddress, hbarBudgetTinybars);
+                    if (tokenAmount <= 0n) {
+                        throw new Error("Could not find a valid token amount for that HBAR budget.");
+                    }
+                    tradeSubmitBtn.textContent = "Confirm in wallet...";
+                    console.log("Buying via SDK - HBAR budget:", hbarBudgetTinybars.toString(), "-> token amount:", tokenAmount.toString());
+                    const result = await mjToken.buy({
+                        amount: tokenAmount
+                    });
+                    console.log("Buy result:", result);
+                    awardPointsForTrade(result, userAddress);
+                } else {
+                    const amountIn = ethers.parseUnits(amount.toString(), 8); // sell amount is already in tokens
+                    console.log("Selling via SDK with amount:", amountIn.toString());
+                    const result = await mjToken.sell({
+                        amount: amountIn,
+                        instant: true
+                    });
+                    console.log("Sell result:", result);
+                    awardPointsForTrade(result, userAddress);
+                }
             }
 
             alert(`SUCCESS! Successfully ${currentMode === 'buy' ? 'bought' : 'sold'} tokens.`);
