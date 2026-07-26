@@ -647,7 +647,17 @@ function setupTradeInterface(tokenAddress, tokenData) {
                     ? Math.min(100, (Number(fundsRaisedTinybars) / Number(fundingGoalTinybars)) * 100)
                     : 0;
                 document.getElementById('stat-progress-value').textContent = `${progressPct.toFixed(progressPct < 1 ? 4 : 1)}%`;
-                document.getElementById('progress-bar-fill').style.width = `${progressPct}%`;
+
+                // The real percentage (funding goals are large - tens of
+                // thousands of HBAR) can be too thin to render as a visible
+                // sliver even after real trades, reading as "broken" rather
+                // than "just started". Floor only the bar's fill width, not
+                // the displayed number, so any genuine progress stays
+                // perceptible - a token with zero trades still shows a
+                // fully empty bar.
+                const MIN_VISIBLE_FILL_PCT = 1.5;
+                const fillPct = progressPct > 0 ? Math.max(progressPct, MIN_VISIBLE_FILL_PCT) : 0;
+                document.getElementById('progress-bar-fill').style.width = `${fillPct}%`;
             } catch (e) {
                 console.warn('Could not fetch bonding progress', e);
             }
