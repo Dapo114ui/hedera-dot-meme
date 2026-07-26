@@ -4,6 +4,7 @@ import { evmAddressToHederaId, fetchTokenTrades, fetchTokenHolders, fetchHbarUsd
 import { isWatchlisted, toggleWatchlist } from './watchlist.js';
 import { wrapProviderForLegacyFees } from './provider-fee-fix.js';
 import { getAlertsForToken, addAlert, removeAlert, checkAlerts } from './alerts.js';
+import { MEMEJOB_ADDRESS, MEMEJOB_ABI } from './router-registry.js';
 
 // @hashgraph/sdk and @buidlerlabs/memejob-sdk-js (which pulls in viem) are
 // ~3.5MB combined - dynamically imported only where actually needed (the
@@ -62,7 +63,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         if (!window.poolAddress) {
-            window.poolAddress = "0xa3bf9adec2fb49fb65c8948aed71c6bf1c4d61c8";
+            window.poolAddress = MEMEJOB_ADDRESS;
             window.isSDKRouter = true;
         }
 
@@ -492,14 +493,11 @@ function setupTradeInterface(tokenAddress) {
     const tradeAmount = document.getElementById('trade-amount');
     const tradeReceive = document.getElementById('trade-receive');
     
-    const ROUTER_ADDRESS = "0xa3bf9adec2fb49fb65c8948aed71c6bf1c4d61c8";
-    const ROUTER_ABI = [
-        "function buyJob(address memeAddress, uint256 amountOutMin, address referrer) external payable",
-        "function sellJob(address memeAddress, uint256 amountIn) external",
-        "function getAmountOut(address memeAddress, uint256 amount, uint8 txType) view returns (uint256 value)",
-        "function addressToMemeTokenMapping(address token) view returns (address tokenAddress, address creatorAddress, uint256 fundsRaised, uint256 tokensSold, address firstBuyer, bool distributeRewards)",
-        "function FUNDING_GOAL() view returns (uint256)"
-    ];
+    // This trade panel only talks to memejob so far - routing a given
+    // token to OnycBondingCurve instead (via getRouterForToken) is a
+    // separate, not-yet-done phase (see router-registry.js).
+    const ROUTER_ADDRESS = MEMEJOB_ADDRESS;
+    const ROUTER_ABI = MEMEJOB_ABI;
 
     const provider = new ethers.JsonRpcProvider("https://testnet.hashio.io/api");
     const routerContract = new ethers.Contract(ROUTER_ADDRESS, ROUTER_ABI, provider);

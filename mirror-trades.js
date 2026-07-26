@@ -1,8 +1,13 @@
 import { Interface } from 'ethers';
+import { MEMEJOB_ADDRESS } from './router-registry.js';
 
 const MIRROR_BASE = 'https://testnet.mirrornode.hedera.com';
 const RPC_URL = 'https://testnet.hashio.io/api';
-const CONTRACT_ADDRESS = '0xa3bf9adec2fb49fb65c8948aed71c6bf1c4d61c8'; // memejob testnet contract (CONTRACT_DEPLOYMENTS.testnet.evmAddress)
+// This module's log-scanning functions (scanRecentTradeLogs,
+// fetchTokenTrades, fetchTopTokensByVolume) only look at memejob so far -
+// dual-contract log scanning across both memejob and OnycBondingCurve is
+// a separate, not-yet-done phase (see router-registry.js).
+const CONTRACT_ADDRESS = MEMEJOB_ADDRESS;
 
 const EXCHANGE_RATE_PRECOMPILE = '0x0000000000000000000000000000000000000168';
 const exchangeRateInterface = new Interface(['function tinycentsToTinybars(uint256 tinycents) view returns (uint256)']);
