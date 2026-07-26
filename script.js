@@ -559,22 +559,33 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // call even though the MemeCreated event genuinely was
                 // emitted on-chain (verified directly against the mirror
                 // node for a transaction that hit exactly this). Mirror
-                // node indexing has a short delay after a transaction
-                // mines, so poll briefly rather than fetching once
-                // immediately.
+                // node indexing lag can run past 10+ seconds under real
+                // conditions (an 8-attempt/1.5s budget - ~12s - genuinely
+                // wasn't enough for a real transaction whose log was
+                // confirmed present moments later), so this budget is
+                // generous - 20 attempts, 2s apart, ~40s worst case - and
+                // logs each miss so a genuine failure is diagnosable
+                // instead of silent. The loop still exits the instant the
+                // event is found, so this adds no latency in the common case.
                 btn.innerHTML = `<span>Confirming on-chain...</span>`;
                 let createdEvent = null;
-                for (let attempt = 0; attempt < 8 && !createdEvent; attempt++) {
-                    if (attempt > 0) await new Promise(r => setTimeout(r, 1500));
+                for (let attempt = 0; attempt < 20 && !createdEvent; attempt++) {
+                    if (attempt > 0) await new Promise(r => setTimeout(r, 2000));
                     try {
                         const resultRes = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${tx.hash}`);
-                        if (!resultRes.ok) continue;
+                        if (!resultRes.ok) {
+                            console.warn(`Mirror node poll ${attempt + 1}/20: HTTP ${resultRes.status}, retrying...`);
+                            continue;
+                        }
                         const contractResult = await resultRes.json();
                         createdEvent = (contractResult.logs || [])
                             .map(log => { try { return onycContract.interface.parseLog({ topics: log.topics, data: log.data }); } catch { return null; } })
                             .find(e => e?.name === 'MemeCreated') || null;
+                        if (!createdEvent) {
+                            console.warn(`Mirror node poll ${attempt + 1}/20: no MemeCreated log yet, retrying...`);
+                        }
                     } catch (e) {
-                        // ignore, retry
+                        console.warn(`Mirror node poll ${attempt + 1}/20 failed, retrying:`, e);
                     }
                 }
                 if (!createdEvent) {
