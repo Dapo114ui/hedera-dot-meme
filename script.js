@@ -2,22 +2,11 @@ import { Buffer } from 'buffer';
 import { supabase } from './supabase.js';
 import { formatUnits, BrowserProvider, Contract, JsonRpcProvider } from 'ethers';
 import { appkit } from './wallet.js';
-import { evmAddressToHederaId, resolveAccountEvmAddress, fetchTopTokensByVolume, fetchTokenMarketStats, fetchCreationFeeTinybars } from './mirror-trades.js';
+import { evmAddressToHederaId, fetchTopTokensByVolume, fetchTokenMarketStats } from './mirror-trades.js';
 import { isWatchlisted, toggleWatchlist } from './watchlist.js';
-import { wrapProviderForLegacyFees } from './provider-fee-fix.js';
-import { MEMEJOB_ADDRESS, ONYC_BONDING_CURVE_ADDRESS, ONYC_BONDING_CURVE_ABI } from './router-registry.js';
-
-// @hashgraph/sdk and @buidlerlabs/memejob-sdk-js (which pulls in viem) are
-// ~3.5MB combined - dynamically imported only where actually needed (the
-// launch handler below) so pages that never launch a token don't pay for it.
+import { ONYC_BONDING_CURVE_ADDRESS, ONYC_BONDING_CURVE_ABI } from './router-registry.js';
 
 let selectedMemeFile = null;
-
-// Flat platform fee charged to the launcher, paid straight to the treasury
-// account as a separate transfer after their token is created (see the
-// launch handler below). Hoisted here so the launch summary's live total
-// cost display references the same value instead of a duplicated literal.
-const LAUNCH_FEE_HBAR = 5;
 
 // After a new deploy, code-split chunk files get new content-hashed names
 // and the old ones are gone - so a tab left open since before the deploy
@@ -411,59 +400,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    // Show the real, current total cost to launch. memejob's cost is the
-    // dynamic token-creation fee (Hedera's exchange rate precompile, ~$1
-    // worth of HBAR, fluctuates with the rate) + the fixed 5 HBAR initial
-    // buy bundled into the same creation transaction + the separate 5 HBAR
-    // platform launch fee. OnycBondingCurve's cost is just its own flat
-    // creationFeeTinybars() - no initial buy or separate platform fee, since
-    // that fee already sweeps the platform's margin to treasury atomically
-    // inside create() itself.
-    const betaToggle = document.getElementById('onyc-curve-beta-toggle');
+    // Show the real, current total cost to launch: OnycBondingCurve's own
+    // flat creationFeeTinybars() - no initial buy or separate platform fee,
+    // since that fee already sweeps the platform's margin to treasury
+    // atomically inside create() itself.
     const summaryTotalCostElem = document.getElementById('summary-total-cost');
     if (summaryTotalCostElem) {
         const summaryBreakdownElem = document.getElementById('summary-total-breakdown');
-        const INITIAL_BUY_HBAR = 5; // matches the 500000000n tinybars amount passed to createToken() - memejob only
+        const readProvider = new JsonRpcProvider("https://testnet.hashio.io/api");
+        const onycContract = new Contract(ONYC_BONDING_CURVE_ADDRESS, ONYC_BONDING_CURVE_ABI, readProvider);
 
-        let onycCreationFeeTinybars = null; // flat constant - fetched once, then cached
-
-        const updateTotalCostDisplay = () => {
-            if (betaToggle?.checked) {
-                summaryTotalCostElem.textContent = 'Loading...';
-                const readProvider = new JsonRpcProvider("https://testnet.hashio.io/api");
-                const onycContract = new Contract(ONYC_BONDING_CURVE_ADDRESS, ONYC_BONDING_CURVE_ABI, readProvider);
-                (onycCreationFeeTinybars !== null ? Promise.resolve(onycCreationFeeTinybars) : onycContract.creationFeeTinybars())
-                    .then(fee => {
-                        onycCreationFeeTinybars = fee;
-                        const feeHbar = Number(fee) / 1e8;
-                        summaryTotalCostElem.textContent = `${feeHbar.toFixed(2)} HBAR`;
-                        if (summaryBreakdownElem) {
-                            summaryBreakdownElem.textContent = `Flat creation fee (new contract, Beta) - no separate platform fee`;
-                        }
-                    })
-                    .catch(() => {
-                        summaryTotalCostElem.textContent = 'Unavailable';
-                    });
-            } else {
-                fetchCreationFeeTinybars().then(creationFeeTinybars => {
-                    const creationFeeHbar = Number(creationFeeTinybars) / 1e8;
-                    if (creationFeeHbar > 0) {
-                        const total = creationFeeHbar + INITIAL_BUY_HBAR + LAUNCH_FEE_HBAR;
-                        summaryTotalCostElem.textContent = `~${total.toFixed(2)} HBAR`;
-                        if (summaryBreakdownElem) {
-                            summaryBreakdownElem.textContent = `Creation fee ~${creationFeeHbar.toFixed(2)} + initial buy ${INITIAL_BUY_HBAR} + platform fee ${LAUNCH_FEE_HBAR}`;
-                        }
-                    } else {
-                        summaryTotalCostElem.textContent = 'Unavailable';
-                    }
-                }).catch(() => {
-                    summaryTotalCostElem.textContent = 'Unavailable';
-                });
-            }
-        };
-
-        updateTotalCostDisplay();
-        betaToggle?.addEventListener('change', updateTotalCostDisplay);
+        onycContract.creationFeeTinybars()
+            .then(fee => {
+                const feeHbar = Number(fee) / 1e8;
+                summaryTotalCostElem.textContent = `${feeHbar.toFixed(2)} HBAR`;
+                if (summaryBreakdownElem) {
+                    summaryBreakdownElem.textContent = `Flat creation fee - no separate platform fee`;
+                }
+            })
+            .catch(() => {
+                summaryTotalCostElem.textContent = 'Unavailable';
+            });
     }
 
     // Explicitly bind the launch submit button
@@ -566,264 +523,68 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             if (window.ensureHederaTestnet) await window.ensureHederaTestnet();
 
-            const useOnycBondingCurve = betaToggle?.checked === true;
-            let newTokenAddress;
-            let routerAddressForToken;
-
-            if (useOnycBondingCurve) {
-                // New first-party contract: flat creation fee, no
-                // exchange-rate-precompile dependency, so none of the
-                // fee-window polling/retry logic in the memejob branch
-                // below applies here at all.
-                const universalProvider = await window.getUniversalProvider();
-                if (!universalProvider) throw new Error("Wallet provider not initialized or not found.");
-                const browserProvider = new BrowserProvider(universalProvider);
-                const signer = await browserProvider.getSigner();
-                const onycContract = new Contract(ONYC_BONDING_CURVE_ADDRESS, ONYC_BONDING_CURVE_ABI, signer);
-
-                const creationFeeTinybars = await onycContract.creationFeeTinybars();
-                // Outer transaction value is 18-decimal - Hedera only
-                // rescales to the contract's native 8-decimal tinybars at
-                // the RPC boundary (see contracts/IOnycBondingCurve.sol's
-                // decimals section).
-                const valueForTx = creationFeeTinybars * 10n ** 10n;
-
-                btn.innerHTML = `<span>Confirm in wallet...</span>`;
-                const tx = await onycContract.create(name, symbol, memo, { value: valueForTx });
-                await tx.wait();
-
-                // Read create()'s own return value (an address) from the
-                // mirror node's call_result field, rather than hunting for
-                // the MemeCreated event log. Two real, live-tested reasons:
-                // 1) the wallet-relayed receipt.logs (via tx.wait() through
-                //    HashPack's own eth_getTransactionReceipt) can come back
-                //    empty for a real, successful create() call even though
-                //    the event genuinely was emitted on-chain.
-                // 2) trying to work around that by polling the mirror node
-                //    for the EVENT LOG instead still isn't reliable - a real
-                //    transaction's log was confirmed absent from twenty
-                //    consecutive polls over ~40s, then present when checked
-                //    again shortly after. The event log is populated by a
-                //    separate, slower indexing pass; call_result is the
-                //    function's direct EVM return value, part of the base
-                //    contract-result record, and doesn't depend on that
-                //    pass - so it should be available as soon as the
-                //    transaction itself is indexed at all.
-                btn.innerHTML = `<span>Confirming on-chain...</span>`;
-                let createdTokenAddress = null;
-                for (let attempt = 0; attempt < 15 && !createdTokenAddress; attempt++) {
-                    if (attempt > 0) await new Promise(r => setTimeout(r, 2000));
-                    try {
-                        const resultRes = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${tx.hash}`);
-                        if (!resultRes.ok) {
-                            console.warn(`Mirror node poll ${attempt + 1}/15: HTTP ${resultRes.status}, retrying...`);
-                            continue;
-                        }
-                        const contractResult = await resultRes.json();
-                        if (contractResult.call_result && contractResult.call_result !== '0x') {
-                            createdTokenAddress = '0x' + contractResult.call_result.replace(/^0x/, '').slice(-40);
-                        } else {
-                            console.warn(`Mirror node poll ${attempt + 1}/15: call_result not yet available, retrying...`);
-                        }
-                    } catch (e) {
-                        console.warn(`Mirror node poll ${attempt + 1}/15 failed, retrying:`, e);
-                    }
-                }
-                if (!createdTokenAddress) {
-                    throw new Error("Token was created, but its address couldn't be read back from the mirror node.");
-                }
-                newTokenAddress = createdTokenAddress;
-                routerAddressForToken = ONYC_BONDING_CURVE_ADDRESS;
-
-                // No separate "platform launch fee" transfer here, unlike
-                // memejob below - the flat creation fee already sweeps the
-                // platform's margin to treasury atomically inside create()
-                // itself.
-            } else {
-
-            // Setup MJClient
-            const [{ ContractId }, { CONTRACT_DEPLOYMENTS, createAdapter, getChain, MJClient, EvmAdapter }] = await Promise.all([
-                import('@hashgraph/sdk'),
-                import('@buidlerlabs/memejob-sdk-js')
-            ]);
-            const chain = getChain('testnet');
             const universalProvider = await window.getUniversalProvider();
             if (!universalProvider) throw new Error("Wallet provider not initialized or not found.");
-            const wrappedProvider = wrapProviderForLegacyFees(universalProvider || window.ethereum);
-            const adapter = createAdapter(EvmAdapter, {
-                ethereumProvider: wrappedProvider
-            });
-            const client = new MJClient(adapter, {
-                chain: chain,
-                contractId: ContractId.fromEvmAddress(0, 0, CONTRACT_DEPLOYMENTS.testnet.evmAddress),
-            });
+            const browserProvider = new BrowserProvider(universalProvider);
+            const signer = await browserProvider.getSigner();
+            const onycContract = new Contract(ONYC_BONDING_CURVE_ADDRESS, ONYC_BONDING_CURVE_ABI, signer);
 
-            console.log("Creating Token with SDK...");
-            // WHY THIS IS INVOLVED: the memejob contract funds HTS token
-            // creation with the exchange-rate precompile's exact $1 equivalent
-            // (tinycentsToTinybars), no buffer. Hedera flips its active exchange
-            // rate on an hourly boundary, so at the boundary the fee required at
-            // execution edges just above what was sent and the contract reverts
-            // with INSUFFICIENT_TX_FEE. The wallet surfaces this inconsistently
-            // (-32000 "Transaction failed" or 4100 "Unauthorized"). We can't fix
-            // the third-party contract and can't buffer it (extra msg.value
-            // never reaches the precompile). BUT the exact same rejection is
-            // reproducible for free from the browser via eth_estimateGas - no
-            // wallet, no HBAR - so rather than pop the wallet and let it fail,
-            // we silently poll until the network is accepting the fee, THEN open
-            // the wallet once, at a moment the launch is very likely to land.
-            const RPC_URL = 'https://testnet.hashio.io/api';
-            const EXCHANGE_RATE_PRECOMPILE = '0x0000000000000000000000000000000000000168';
-            const contractEvmAddress = CONTRACT_DEPLOYMENTS.testnet.evmAddress;
+            const creationFeeTinybars = await onycContract.creationFeeTinybars();
+            // Outer transaction value is 18-decimal - Hedera only rescales
+            // to the contract's native 8-decimal tinybars at the RPC
+            // boundary (see contracts/IOnycBondingCurve.sol's decimals
+            // section).
+            const valueForTx = creationFeeTinybars * 10n ** 10n;
 
-            let encodeFunctionData;
-            try {
-                ({ encodeFunctionData } = await import('viem'));
-            } catch (e) {
-                console.warn('viem unavailable; skipping fee pre-flight', e);
-            }
+            btn.innerHTML = `<span>Confirm in wallet...</span>`;
+            const tx = await onycContract.create(name, symbol, memo, { value: valueForTx });
+            await tx.wait();
 
-            const rpc = async (method, params) => {
-                const r = await fetch(RPC_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })
-                });
-                return r.json();
-            };
-
-            // Poll eth_estimateGas (free, no wallet) until the network accepts
-            // the create-token fee twice in a row - which guards against opening
-            // the wallet right on a flapping boundary. Returns when settled, or
-            // after the time budget (in which case we proceed anyway and lean on
-            // the retry net below). Never throws - pre-flight is best-effort.
-            const waitForFeeWindow = async () => {
-                if (!encodeFunctionData || !currentUserEvm) return;
-                let launchData, feeData;
+            // Read create()'s own return value (an address) from the
+            // mirror node's call_result field, rather than hunting for the
+            // MemeCreated event log. Two real, live-tested reasons:
+            // 1) the wallet-relayed receipt.logs (via tx.wait() through
+            //    HashPack's own eth_getTransactionReceipt) can come back
+            //    empty for a real, successful create() call even though
+            //    the event genuinely was emitted on-chain.
+            // 2) trying to work around that by polling the mirror node
+            //    for the EVENT LOG instead still isn't reliable - a real
+            //    transaction's log was confirmed absent from twenty
+            //    consecutive polls over ~40s, then present when checked
+            //    again shortly after. The event log is populated by a
+            //    separate, slower indexing pass; call_result is the
+            //    function's direct EVM return value, part of the base
+            //    contract-result record, and doesn't depend on that pass -
+            //    so it should be available as soon as the transaction
+            //    itself is indexed at all.
+            btn.innerHTML = `<span>Confirming on-chain...</span>`;
+            let createdTokenAddress = null;
+            for (let attempt = 0; attempt < 15 && !createdTokenAddress; attempt++) {
+                if (attempt > 0) await new Promise(r => setTimeout(r, 2000));
                 try {
-                    launchData = encodeFunctionData({
-                        abi: [{ name: 'memeJob', type: 'function', stateMutability: 'payable', inputs: [
-                            { name: 'name', type: 'string' }, { name: 'symbol', type: 'string' },
-                            { name: 'memo', type: 'string' }, { name: 'referrer', type: 'address' },
-                            { name: 'amount', type: 'uint256' }, { name: 'distributeRewards', type: 'bool' }
-                        ], outputs: [{ type: 'address' }] }],
-                        functionName: 'memeJob',
-                        args: [name, symbol, memo, '0x0000000000000000000000000000000000000000', 500000000n, true]
-                    });
-                    feeData = encodeFunctionData({
-                        abi: [{ name: 'tinycentsToTinybars', type: 'function', stateMutability: 'view',
-                            inputs: [{ name: 'tinycents', type: 'uint256' }], outputs: [{ type: 'uint256' }] }],
-                        functionName: 'tinycentsToTinybars',
-                        args: [100n * 10n ** 8n]
-                    });
-                } catch (e) {
-                    console.warn('Could not encode launch calldata for pre-flight', e);
-                    return;
-                }
-                const budgetMs = 45000;
-                const start = Date.now();
-                let greens = 0;
-                while (Date.now() - start < budgetMs) {
-                    try {
-                        const feeRes = await rpc('eth_call', [{ to: EXCHANGE_RATE_PRECOMPILE, data: feeData }, 'latest']);
-                        const creationFee = BigInt(feeRes.result);
-                        const value = '0x' + ((creationFee + 500000000n) * 10n ** 10n).toString(16);
-                        const est = await rpc('eth_estimateGas', [{ from: currentUserEvm, to: contractEvmAddress, value, data: launchData }]);
-                        if (est.result && !est.error) {
-                            if (++greens >= 2) return;
-                        } else {
-                            greens = 0;
-                        }
-                    } catch (e) {
-                        greens = 0;
-                    }
-                    await new Promise(r => setTimeout(r, 1200));
-                }
-            };
-
-            // Safety net: even after a green pre-flight the rate can flip in the
-            // seconds it takes to approve, so a retry still backs it up. A
-            // genuine user rejection (4001) is never retried - re-prompting
-            // someone who deliberately declined would be wrong.
-            const isRetryableLaunchError = (err) => {
-                if (err?.code === 4001) return false;
-                const msg = (err?.message || '') + (err?.details || '') + JSON.stringify(err?.cause || '');
-                if (/user rejected|user denied|rejected the request|action_rejected/i.test(msg)) return false;
-                return err?.code === -32000 || err?.code === 4100 ||
-                    /INSUFFICIENT_TX_FEE|Transaction failed|Missing or invalid parameters|Unauthorized|not been authorized/i.test(msg);
-            };
-
-            const MAX_LAUNCH_ATTEMPTS = 4;
-            let mjToken;
-            for (let attempt = 1; attempt <= MAX_LAUNCH_ATTEMPTS; attempt++) {
-                btn.innerHTML = `<span>Checking network fee...</span>`;
-                await waitForFeeWindow();
-                btn.innerHTML = `<span>Approve in your wallet...</span>`;
-                try {
-                    mjToken = await client.createToken({
-                        name: name,
-                        symbol: symbol,
-                        memo: memo
-                    }, {
-                        amount: 500000000n // 5 HBAR in tinybars to act as initial buy buffer and prevent OVERFLOW(17)
-                    });
-                    break;
-                } catch (err) {
-                    if (attempt < MAX_LAUNCH_ATTEMPTS && isRetryableLaunchError(err)) {
-                        console.warn(`Launch attempt ${attempt} hit a transient Hedera rejection (${err?.code || '?'}: ${err?.shortMessage || err?.message}), re-checking fee and retrying...`);
-                        btn.innerHTML = `<span>Network busy, retrying (${attempt + 1}/${MAX_LAUNCH_ATTEMPTS})...</span>`;
-                        await new Promise(r => setTimeout(r, 1500));
+                    const resultRes = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${tx.hash}`);
+                    if (!resultRes.ok) {
+                        console.warn(`Mirror node poll ${attempt + 1}/15: HTTP ${resultRes.status}, retrying...`);
                         continue;
                     }
-                    throw err;
+                    const contractResult = await resultRes.json();
+                    if (contractResult.call_result && contractResult.call_result !== '0x') {
+                        createdTokenAddress = '0x' + contractResult.call_result.replace(/^0x/, '').slice(-40);
+                    } else {
+                        console.warn(`Mirror node poll ${attempt + 1}/15: call_result not yet available, retrying...`);
+                    }
+                } catch (e) {
+                    console.warn(`Mirror node poll ${attempt + 1}/15 failed, retrying:`, e);
                 }
             }
-
-            console.log("Token Created!", mjToken.tokenId);
-            const tokenIdStr = mjToken.tokenId.toString();
-            const parts = tokenIdStr.split('.');
-            newTokenAddress = `0x000000000000000000000000${parseInt(parts[2]).toString(16).padStart(16, '0')}`;
-            routerAddressForToken = MEMEJOB_ADDRESS;
-
-            // Platform launch fee: a flat 5 HBAR charged to the launcher,
-            // collected as a plain transfer straight to the treasury account
-            // right after the token itself is created. (We previously had the
-            // treasury spend its own HBAR to buy 1% of every new token's supply
-            // on the bonding curve - at current pricing that's ~120 HBAR spent
-            // per launch chasing tokens that are usually worthless, a losing
-            // model. A flat fee is guaranteed revenue instead of a bet.)
-            //
-            // The token is already live on-chain by this point, so a
-            // rejected/failed fee transfer is logged and skipped, never
-            // treated as a launch failure - the user already got what they
-            // came for.
-            const treasuryAccountId = import.meta.env.VITE_TREASURY_ACCOUNT_ID;
-            if (treasuryAccountId && currentUserEvm) {
-                try {
-                    btn.innerHTML = `<span>Charging launch fee...</span>`;
-                    // Must use the treasury account's real EVM alias (not the
-                    // long-zero form) - it has an ECDSA key, and Hedera's relay
-                    // rejects value transfers to the long-zero address for
-                    // accounts that already have a real alias.
-                    const treasuryEvmAddress = await resolveAccountEvmAddress(treasuryAccountId);
-                    const feeWeibars = BigInt(Math.round(LAUNCH_FEE_HBAR * 1e8)) * 10n ** 10n;
-                    await wrappedProvider.request({
-                        method: 'eth_sendTransaction',
-                        params: [{
-                            from: currentUserEvm,
-                            to: treasuryEvmAddress,
-                            value: '0x' + feeWeibars.toString(16)
-                        }]
-                    });
-                    console.log(`Launch fee of ${LAUNCH_FEE_HBAR} HBAR sent to treasury.`);
-                } catch (feeErr) {
-                    console.warn('Launch fee transfer failed or was rejected - launch still succeeds:', feeErr);
-                }
-            } else {
-                console.warn('VITE_TREASURY_ACCOUNT_ID not configured - skipping launch fee.');
+            if (!createdTokenAddress) {
+                throw new Error("Token was created, but its address couldn't be read back from the mirror node.");
             }
+            const newTokenAddress = createdTokenAddress;
 
-            } // end memejob branch (useOnycBondingCurve === false)
+            // No separate "platform launch fee" transfer - the flat
+            // creation fee already sweeps the platform's margin to
+            // treasury atomically inside create() itself.
 
             btn.innerHTML = `<span>Finalizing...</span>`;
 
@@ -884,16 +645,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                     // metadata (the on-chain memo), so nothing is lost by omitting
                     // them here.
                     //
-                    // router_address records which bonding-curve contract this
-                    // token lives on (see router-registry.js) - memejob unless
-                    // the Beta toggle routed this launch to OnycBondingCurve.
+                    // router_address records which bonding-curve contract
+                    // this token lives on (see router-registry.js) - every
+                    // new launch goes through OnycBondingCurve now.
                     const payload = {
                         token_address: newTokenAddress.toLowerCase(),
                         creator_address: currentUserEvm.toLowerCase(),
                         name: name,
                         symbol: symbol,
                         image_url: finalDbImageUrl,
-                        router_address: routerAddressForToken
+                        router_address: ONYC_BONDING_CURVE_ADDRESS
                     };
                     console.log("Payload being sent to Supabase:", { token_address: payload.token_address, creator_address: payload.creator_address });
                     const { error } = await supabase.from('meme_tokens').insert([payload]);
