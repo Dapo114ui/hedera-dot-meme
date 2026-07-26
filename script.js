@@ -5,6 +5,7 @@ import { appkit } from './wallet.js';
 import { evmAddressToHederaId, fetchTopTokensByVolume, fetchTokenMarketStats } from './mirror-trades.js';
 import { isWatchlisted, toggleWatchlist } from './watchlist.js';
 import { ONYC_BONDING_CURVE_ADDRESS, ONYC_BONDING_CURVE_ABI } from './router-registry.js';
+import { showAlert, showConfirm } from './ui-modal.js';
 
 let selectedMemeFile = null;
 
@@ -181,6 +182,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const connectWallet = async () => {
         try {
+            explicitDisconnect = false;
             if (!appkit) throw new Error("AppKit failed to initialize on page load");
             if (typeof appkit.open === 'function') {
                 await appkit.open();
@@ -190,7 +192,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } catch (err) {
             console.error("Connection error:", err);
-            alert("Failed to connect wallet: " + err.message);
+            showAlert("Failed to connect wallet: " + err.message, { title: 'Connection Error', variant: 'error' });
         }
         return false;
     };
@@ -200,11 +202,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     // "was connected, this is just a fresh page load" (see below).
     const WALLET_HINT_KEY = 'onyc_wallet_was_connected';
 
+    // Injected wallets have no real "disconnect" at the EIP-1193 level - a
+    // dApp can't revoke the origin's permission, only the user can from
+    // inside the wallet. HashPack keeps answering eth_accounts with the
+    // real account for the rest of THIS page's lifetime even after we call
+    // appkit.disconnect() (it only forgets across an actual navigation/
+    // reload - see the WALLET_HINT_KEY comment below). So the very next
+    // syncAppKitState run - triggered by appkit's own account-change event
+    // right after disconnecting - would silently rediscover the same
+    // account via eth_accounts and immediately reconnect, which is exactly
+    // the "wallet refuses to disconnect" bug. This flag makes an explicit
+    // disconnect stick for the rest of the page's life, until the user
+    // deliberately reconnects.
+    let explicitDisconnect = false;
+
     const syncAppKitState = async () => {
         try {
             let isConnected = false;
             let address = null;
 
+            if (!explicitDisconnect) {
             try {
                 if (appkit && typeof appkit.getAccount === 'function') {
                     const account = appkit.getAccount();
@@ -280,6 +297,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     console.warn("Silent eth_accounts restore failed:", e);
                 }
             }
+            } // end if (!explicitDisconnect)
 
             if (address) {
                 // Forcefully strip CAIP-10 prefixes via Regex
@@ -368,7 +386,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             e.preventDefault();
             if (currentUserNative) {
-                if (confirm("Disconnect?")) {
+                if (await showConfirm("Disconnect your wallet?", { title: 'Disconnect Wallet' })) {
+                    explicitDisconnect = true;
                     try { await appkit.disconnect(); } catch(err){}
                     localStorage.removeItem(WALLET_HINT_KEY);
                     currentUserEvm = null;
@@ -704,7 +723,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             } catch (e) {
                 console.error("Supabase Insert Failed:", e);
                 // Fallback if supabase fails but token is created
-                alert(`SUCCESS! Your Meme Token is live. (Note: Database indexing failed, image might not appear)`);
+                await showAlert('Your meme token is live. (Note: database indexing failed, image might not appear)', { title: 'Launch Successful', variant: 'success' });
                 window.location.href = 'markets.html';
             }
 
@@ -717,15 +736,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     /INSUFFICIENT_TX_FEE|Transaction failed|Missing or invalid parameters|Unauthorized|not been authorized/i.test(msg)
                 );
                 if (userRejected) {
-                    alert("Launch cancelled - you rejected the transaction in your wallet.");
+                    await showAlert("Launch cancelled - you rejected the transaction in your wallet.", { title: 'Launch Cancelled', variant: 'warning' });
                 } else if (transientReject) {
                     // Transient Hedera testnet rejection (exchange-rate fee timing,
                     // reported by HashPack as either "Transaction failed" or
                     // "Unauthorized"). Nothing was submitted, so no HBAR was spent.
                     // Already auto-retried several times before landing here.
-                    alert("Launch didn't go through after several tries - Hedera testnet is intermittently rejecting the token-creation fee right now (a known testnet exchange-rate timing issue). No HBAR was spent. Please wait a moment and click Launch Meme again. If it keeps failing, disconnect and reconnect your wallet, then retry.");
+                    await showAlert("Hedera testnet is intermittently rejecting the token-creation fee right now (a known testnet exchange-rate timing issue). No HBAR was spent. Please wait a moment and click Launch Meme again. If it keeps failing, disconnect and reconnect your wallet, then retry.", { title: "Launch Didn't Go Through", variant: 'error' });
                 } else {
-                    alert(`Launch Failed: ${err.message || "User rejected or wallet error"}`);
+                    await showAlert(err.message || "User rejected or wallet error", { title: 'Launch Failed', variant: 'error' });
                 }
             } finally {
                 try {
@@ -1060,8 +1079,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Delete Click Handler
             const deleteBtn = tokenCard.querySelector('.delete-meme-btn');
-            deleteBtn.addEventListener('click', () => {
-                if (confirm(`Hide ${token.name} from your portfolio? This only hides it from your view.`)) {
+            deleteBtn.addEventListener('click', async () => {
+                if (await showConfirm(`Hide ${token.name} from your portfolio? This only hides it from your view.`, { title: 'Hide Token' })) {
                     hiddenMemes.push(token.token_address.toLowerCase());
                     localStorage.setItem(hiddenKey, JSON.stringify(hiddenMemes));
                     tokenCard.style.opacity = '0';

@@ -5,6 +5,7 @@ import { isWatchlisted, toggleWatchlist } from './watchlist.js';
 import { wrapProviderForLegacyFees } from './provider-fee-fix.js';
 import { getAlertsForToken, addAlert, removeAlert, checkAlerts } from './alerts.js';
 import { MEMEJOB_ADDRESS, getRouterForToken } from './router-registry.js';
+import { showAlert } from './ui-modal.js';
 
 // @hashgraph/sdk and @buidlerlabs/memejob-sdk-js (which pulls in viem) are
 // ~3.5MB combined - dynamically imported only where actually needed (the
@@ -18,7 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const tokenAddress = urlParams.get('address');
 
     if (!tokenAddress) {
-        alert("No token address provided!");
+        await showAlert("No token address provided!", { title: 'Error', variant: 'error' });
         window.location.href = 'markets.html';
         return;
     }
@@ -735,7 +736,7 @@ function setupTradeInterface(tokenAddress, tokenData) {
             const direction = document.getElementById('alert-direction').value;
             const targetPrice = parseFloat(priceInput.value);
             if (!targetPrice || targetPrice <= 0) {
-                alert('Enter a valid target price.');
+                showAlert('Enter a valid target price.', { title: 'Invalid Price', variant: 'warning' });
                 return;
             }
             addAlert(tokenAddress, targetPrice, direction);
@@ -878,18 +879,18 @@ function setupTradeInterface(tokenAddress, tokenData) {
     tradeSubmitBtn.onclick = async () => {
         const universalProvider = typeof window.getUniversalProvider === 'function' ? await window.getUniversalProvider() : window.ethereum;
         if (!universalProvider) {
-            alert("Please connect a wallet!");
+            await showAlert("Please connect a wallet!", { title: 'Wallet Required', variant: 'warning' });
             return;
         }
 
         const amount = parseFloat(tradeAmount.value);
         if (!amount || amount <= 0) {
-            alert("Enter a valid amount!");
+            await showAlert("Enter a valid amount!", { title: 'Invalid Amount', variant: 'warning' });
             return;
         }
 
         if (currentMode === 'buy' && amount < MIN_BUY_HBAR) {
-            alert(`Minimum buy is ${MIN_BUY_HBAR} HBAR.`);
+            await showAlert(`Minimum buy is ${MIN_BUY_HBAR} HBAR.`, { title: 'Minimum Buy', variant: 'warning' });
             return;
         }
 
@@ -1011,14 +1012,14 @@ function setupTradeInterface(tokenAddress, tokenData) {
                 }
             }
 
-            alert(`SUCCESS! Successfully ${currentMode === 'buy' ? 'bought' : 'sold'} tokens.`);
+            await showAlert(`Successfully ${currentMode === 'buy' ? 'bought' : 'sold'} tokens.`, { title: 'Success', variant: 'success' });
             tradeAmount.value = '';
             tradeReceive.value = '';
             fetchStats();
 
         } catch (error) {
             console.error(error);
-            alert("Transaction failed: " + (error.message || error));
+            await showAlert(error.message || String(error), { title: 'Transaction Failed', variant: 'error' });
         } finally {
             tradeSubmitBtn.textContent = currentMode === 'buy' ? 'Buy Token' : 'Sell Token';
             tradeSubmitBtn.disabled = false;
