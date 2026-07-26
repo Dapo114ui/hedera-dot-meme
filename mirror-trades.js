@@ -1,13 +1,11 @@
 import { Interface } from 'ethers';
-import { MEMEJOB_ADDRESS } from './router-registry.js';
+import { MEMEJOB_ADDRESS, ONYC_BONDING_CURVE_ADDRESS } from './router-registry.js';
 
 const MIRROR_BASE = 'https://testnet.mirrornode.hedera.com';
 const RPC_URL = 'https://testnet.hashio.io/api';
-// This module's log-scanning functions (scanRecentTradeLogs,
-// fetchTokenTrades, fetchTopTokensByVolume) only look at memejob so far -
-// dual-contract log scanning across both memejob and OnycBondingCurve is
-// a separate, not-yet-done phase (see router-registry.js).
-const CONTRACT_ADDRESS = MEMEJOB_ADDRESS;
+// Trades happen on either contract, so every log-scanning function below
+// scans both and merges the results (see router-registry.js).
+const CONTRACT_ADDRESSES = [MEMEJOB_ADDRESS, ONYC_BONDING_CURVE_ADDRESS];
 
 const EXCHANGE_RATE_PRECOMPILE = '0x0000000000000000000000000000000000000168';
 const exchangeRateInterface = new Interface(['function tinycentsToTinybars(uint256 tinycents) view returns (uint256)']);
@@ -70,9 +68,10 @@ const tradeEventsInterface = new Interface(TRADE_EVENTS_ABI);
 
 // Each page is a sequential round-trip (pagination is a "next" link chain,
 // not parallelizable), so this directly trades off completeness for
-// latency. 5 pages (~500 most recent logs across the whole shared
-// contract) keeps bulk ranking (leaderboard/markets) reasonably fast;
-// recency-biased data is arguably more correct for "trending" anyway.
+// latency. 5 pages per contract (~500 most recent logs each, scanned in
+// parallel across contracts) keeps bulk ranking (leaderboard/markets)
+// reasonably fast; recency-biased data is arguably more correct for
+// "trending" anyway.
 const MAX_PAGES = 5;
 
 export function evmAddressToHederaId(address) {
@@ -113,14 +112,14 @@ export async function resolveAccountEvmAddress(hederaId) {
 
 /**
  * Mirror node requires a bounded timestamp range for topic-filtered log
- * queries, and the memejob contract is shared across every token on the
- * platform, so instead of filtering server-side we page through the
- * contract's logs newest-first (capped at MAX_PAGES) and decode
- * everything - callers filter/aggregate as needed.
+ * queries, and each bonding-curve contract is shared across every token
+ * routed through it, so instead of filtering server-side we page through
+ * each contract's logs newest-first (capped at MAX_PAGES per contract) and
+ * decode everything - callers filter/aggregate as needed.
  */
-async function scanRecentTradeLogs(maxPages = MAX_PAGES) {
+async function scanContractTradeLogs(contractAddress, maxPages) {
     const decoded = [];
-    let url = `${MIRROR_BASE}/api/v1/contracts/${CONTRACT_ADDRESS}/results/logs?order=desc&limit=100`;
+    let url = `${MIRROR_BASE}/api/v1/contracts/${contractAddress}/results/logs?order=desc&limit=100`;
 
     for (let page = 0; page < maxPages && url; page++) {
         const res = await fetch(url);
@@ -151,6 +150,13 @@ async function scanRecentTradeLogs(maxPages = MAX_PAGES) {
     }
 
     return decoded;
+}
+
+async function scanRecentTradeLogs(maxPages = MAX_PAGES) {
+    const perContract = await Promise.all(
+        CONTRACT_ADDRESSES.map(addr => scanContractTradeLogs(addr, maxPages))
+    );
+    return perContract.flat();
 }
 
 export async function fetchTokenTrades(tokenEvmAddress) {
