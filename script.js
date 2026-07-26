@@ -206,6 +206,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         return false;
     };
 
+    // Set right after any successful connection, cleared on explicit
+    // disconnect - lets syncAppKitState tell "never connected" apart from
+    // "was connected, this is just a fresh page load" (see below).
+    const WALLET_HINT_KEY = 'onyc_wallet_was_connected';
+
     const syncAppKitState = async () => {
         try {
             let isConnected = false;
@@ -231,14 +236,31 @@ document.addEventListener('DOMContentLoaded', async () => {
                 address = window.ethereum.selectedAddress;
             }
 
-            // AppKit's own reconnect is disabled (wallet.js sets
-            // enableReconnect: false) because its injected-connector sync
-            // calls eth_requestAccounts - which HashPack answers by popping
-            // its own window open - on every single page load of this
-            // multi-page site. So "already connected" has to be restored
-            // here instead, via a plain eth_accounts read: per the EIP-1193
-            // spec this is always silent/no-prompt, since it only returns
-            // accounts already permitted for this origin.
+            // AppKit's own reconnect is disabled for the injected connector
+            // (wallet.js) because its sync calls eth_requestAccounts, which
+            // HashPack answers by popping its own window open - on every
+            // single page load of this multi-page site. So "already
+            // connected" is restored here instead, via a plain eth_accounts
+            // read, which per the EIP-1193 spec never prompts.
+            //
+            // That assumed eth_accounts would keep returning the
+            // already-permitted account like MetaMask does, but HashPack's
+            // injected provider doesn't retain that across a full page
+            // reload - it genuinely returns [] every time (confirmed live:
+            // console showed "HashPack resolving with result: []" on every
+            // fresh page after a real successful connection). So the silent
+            // read alone can never restore a HashPack session on this site.
+            //
+            // Falling back to eth_requestAccounts would fix that, but doing
+            // it unconditionally reintroduces the exact popup-spam problem
+            // enableReconnect:false was meant to stop, including for
+            // visitors who never connected at all. Gating it on
+            // WALLET_HINT_KEY - set only right after a real successful
+            // connection, cleared on explicit disconnect - means the popup
+            // only reappears for someone who was already using the wallet
+            // here, which is the one case where restoring the session is
+            // worth a native approval prompt instead of forcing them back
+            // through the full "Connect Wallet" modal on every navigation.
             if (!isConnected) {
                 try {
                     const provider = typeof window.getUniversalProvider === 'function' ? await window.getUniversalProvider() : null;
@@ -247,6 +269,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (accounts && accounts[0]) {
                             isConnected = true;
                             address = accounts[0];
+                        } else if (localStorage.getItem(WALLET_HINT_KEY) === '1') {
+                            try {
+                                const requested = await provider.request({ method: 'eth_requestAccounts' });
+                                if (requested && requested[0]) {
+                                    isConnected = true;
+                                    address = requested[0];
+                                } else {
+                                    localStorage.removeItem(WALLET_HINT_KEY);
+                                }
+                            } catch (reqErr) {
+                                // User dismissed/rejected the restore prompt -
+                                // treat as an explicit disconnect so it isn't
+                                // asked again on the next page.
+                                console.warn("eth_requestAccounts restore was rejected:", reqErr);
+                                localStorage.removeItem(WALLET_HINT_KEY);
+                            }
                         }
                     }
                 } catch (e) {
@@ -264,8 +302,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             
             if (isConnected && address) {
+                localStorage.setItem(WALLET_HINT_KEY, '1');
                 currentUserEvm = address;
-                
+
                 try {
                     currentUserNative = await getHederaNativeId(address);
                 } catch(e) {
@@ -342,6 +381,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (currentUserNative) {
                 if (confirm("Disconnect?")) {
                     try { await appkit.disconnect(); } catch(err){}
+                    localStorage.removeItem(WALLET_HINT_KEY);
                     currentUserEvm = null;
                     currentUserNative = null;
                     updateWalletUI();
