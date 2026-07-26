@@ -1,8 +1,13 @@
 import { Interface } from 'ethers';
 import { createClient } from '@supabase/supabase-js';
+import { MEMEJOB_ADDRESS, ONYC_BONDING_CURVE_ADDRESS } from '../router-registry.js';
 
 const MIRROR_BASE = 'https://testnet.mirrornode.hedera.com';
-const CONTRACT_ADDRESS = '0xa3bf9adec2fb49fb65c8948aed71c6bf1c4d61c8'; // memejob testnet contract
+
+// Trades on either contract count - TokensBought/TokensSold have the
+// identical shape on both (see contracts/IOnycBondingCurve.sol), so the
+// event-decoding below needs no changes at all, only this allowlist.
+const VALID_CONTRACT_ADDRESSES = new Set([MEMEJOB_ADDRESS, ONYC_BONDING_CURVE_ADDRESS]);
 
 const TRADE_EVENTS_ABI = [
     'event TokensBought(address indexed tokenAddress, address indexed buyer, uint256 amount, uint256 totalPrice)',
@@ -98,8 +103,8 @@ export default async function handler(req, res) {
         }
         const contractResult = await resultRes.json();
 
-        if (contractResult.to?.toLowerCase() !== CONTRACT_ADDRESS.toLowerCase()) {
-            return res.status(400).json({ error: 'Transaction was not a memejob trade' });
+        if (!VALID_CONTRACT_ADDRESSES.has(contractResult.to?.toLowerCase())) {
+            return res.status(400).json({ error: 'Transaction was not a trade on a known bonding-curve contract' });
         }
 
         let trade = null;
