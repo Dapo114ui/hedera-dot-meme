@@ -16,6 +16,14 @@
 
 body {
     background-color: var(--bg-color);
+    /* Same fine dot-grid texture as the splash page (index.html), brought
+       site-wide so every page shares its ambient look instead of the splash
+       being the only textured one. Fixed attachment keeps it viewport-
+       relative rather than scrolling with (and visually drifting across)
+       page content. */
+    background-image: radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+    background-size: 28px 28px;
+    background-attachment: fixed;
     color: var(--text-primary);
     font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     min-height: 100vh;
