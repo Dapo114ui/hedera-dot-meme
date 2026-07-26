@@ -550,10 +550,33 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 btn.innerHTML = `<span>Confirm in wallet...</span>`;
                 const tx = await onycContract.create(name, symbol, memo, { value: valueForTx });
-                const receipt = await tx.wait();
-                const createdEvent = receipt.logs
-                    .map(log => { try { return onycContract.interface.parseLog(log); } catch { return null; } })
-                    .find(e => e?.name === 'MemeCreated');
+                await tx.wait();
+
+                // Read the emitted logs from the mirror node rather than
+                // the wallet-relayed receipt.logs - confirmed live that
+                // HashPack's own eth_getTransactionReceipt can come back
+                // with an empty logs array for a real, successful create()
+                // call even though the MemeCreated event genuinely was
+                // emitted on-chain (verified directly against the mirror
+                // node for a transaction that hit exactly this). Mirror
+                // node indexing has a short delay after a transaction
+                // mines, so poll briefly rather than fetching once
+                // immediately.
+                btn.innerHTML = `<span>Confirming on-chain...</span>`;
+                let createdEvent = null;
+                for (let attempt = 0; attempt < 8 && !createdEvent; attempt++) {
+                    if (attempt > 0) await new Promise(r => setTimeout(r, 1500));
+                    try {
+                        const resultRes = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/contracts/results/${tx.hash}`);
+                        if (!resultRes.ok) continue;
+                        const contractResult = await resultRes.json();
+                        createdEvent = (contractResult.logs || [])
+                            .map(log => { try { return onycContract.interface.parseLog({ topics: log.topics, data: log.data }); } catch { return null; } })
+                            .find(e => e?.name === 'MemeCreated') || null;
+                    } catch (e) {
+                        // ignore, retry
+                    }
+                }
                 if (!createdEvent) {
                     throw new Error("Token was created, but the MemeCreated event wasn't found to read its address.");
                 }
