@@ -790,8 +790,23 @@ function setupTradeInterface(tokenAddress, tokenData) {
             } else {
                 labelReceive.textContent = 'Amount to receive (HBAR)';
                 const amountIn = ethers.parseUnits(amount.toString(), 8); // sell amount is already in tokens
-                const amountOut = await routerContract.getAmountOut(tokenAddress, amountIn, 1);
-                tradeReceive.value = ethers.formatUnits(amountOut, 8);
+
+                if (isOnycBondingCurve) {
+                    // getAmountOut's sell branch quotes off a different
+                    // reserve ordering than previewSell and blows up for
+                    // trade sizes that aren't tiny relative to the curve's
+                    // reserves (confirmed live: a 13.5M-token sell preview
+                    // showed ~774,100,341 HBAR instead of the real ~5.17).
+                    // previewSell is the exact, fee-inclusive quote - same
+                    // function the actual sell submission below already
+                    // uses for minHbarOut, so this now matches what
+                    // execution does.
+                    const hbarOut = await routerContract.previewSell(tokenAddress, amountIn);
+                    tradeReceive.value = ethers.formatUnits(hbarOut, 8);
+                } else {
+                    const amountOut = await routerContract.getAmountOut(tokenAddress, amountIn, 1);
+                    tradeReceive.value = ethers.formatUnits(amountOut, 8);
+                }
             }
         } catch(e) {
             tradeReceive.value = '';
