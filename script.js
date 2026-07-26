@@ -839,11 +839,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (profileArea) profileArea.style.display = 'flex';
                 if (portfolioTabsContainer) portfolioTabsContainer.style.display = 'flex';
 
-                // Truncate address for display
+                // Show the Hedera native ID (0.0.x), same convention as the
+                // navbar's wallet button - the EVM form is internal
+                // plumbing (blockie seed, token queries below), not
+                // something a user on Hedera identifies their account by.
                 const addr = currentUserEvm;
-                const truncated = addr.substring(0, 6) + '...' + addr.substring(addr.length - 4);
-                if (profileAddressDisplay) profileAddressDisplay.innerText = truncated;
-                if (copyAddressText) copyAddressText.innerText = truncated;
+                const displayId = currentUserNative;
+                if (profileAddressDisplay) profileAddressDisplay.innerText = displayId;
+                if (copyAddressText) copyAddressText.innerText = displayId;
 
                 // Generate Blockie Avatar
                 if (pfpImg && window.blockies) {
@@ -861,7 +864,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 if (copyAddressBtn) {
                     copyAddressBtn.onclick = () => {
-                        navigator.clipboard.writeText(addr);
+                        navigator.clipboard.writeText(displayId);
                         const oldText = copyAddressText.innerText;
                         copyAddressText.innerText = 'Copied!';
                         setTimeout(() => copyAddressText.innerText = oldText, 2000);
