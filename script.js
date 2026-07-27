@@ -1382,8 +1382,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 topWalletsList.innerHTML = '<div style="text-align: center; padding: 40px; opacity: 0.7;">No trades recorded yet.</div>';
                 return;
             }
+            // Same convention as the navbar/portfolio: show the Hedera
+            // native ID (0.0.x), not the raw EVM address the ledger stores
+            // it as. getHederaNativeId caches in localStorage, so repeat
+            // visits resolve most of these instantly.
+            const nativeIds = await Promise.all(ranked.map(([address]) => getHederaNativeId(address)));
+
             ranked.forEach(([address, stats], index) => {
-                const truncated = address.substring(0, 6) + '...' + address.substring(address.length - 4);
+                const displayId = nativeIds[index] || (address.substring(0, 6) + '...' + address.substring(address.length - 4));
                 const volumeHbar = (stats.volumeTinybars / 1e8).toLocaleString(undefined, { maximumFractionDigits: 2 });
                 const div = document.createElement('div');
                 div.className = `list-item${index === 0 ? ' highlight-gold' : ''}`;
@@ -1391,7 +1397,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <div class="item-rank">#${index + 1}</div>
                     <div class="item-avatar item-avatar-medal">${RANK_MEDALS[index] || '👛'}</div>
                     <div class="item-info">
-                        <span class="item-primary">${truncated}</span>
+                        <span class="item-primary">${displayId}</span>
                         <span class="item-secondary">${volumeHbar} HBAR traded</span>
                     </div>
                     <div class="item-stats text-right">
