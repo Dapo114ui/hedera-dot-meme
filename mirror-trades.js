@@ -85,6 +85,40 @@ export function hederaIdToEvmAddress(hederaId) {
     return '0x' + '0'.repeat(24) + num.toString(16).padStart(16, '0');
 }
 
+// Forward direction, but unlike evmAddressToHederaId above this also
+// resolves accounts with a real EVM alias (e.g. any HashPack-created
+// wallet) by asking the mirror node, not just the long-zero form. Used
+// wherever a trader/wallet address is shown to the user (leaderboard,
+// portfolio, recent trades) - Hedera users identify accounts by their
+// native ID, not the raw EVM address the app stores internally. Caches in
+// localStorage since these are looked up per-row in trader lists.
+export async function getHederaNativeId(evmAddress) {
+    if (!evmAddress) return null;
+    if (/^0\.0\.\d+$/.test(evmAddress)) return evmAddress;
+
+    if (evmAddress.toLowerCase().startsWith('0x000000000000000000000000')) {
+        return evmAddressToHederaId(evmAddress);
+    }
+
+    const cacheKey = `hedera_id_${evmAddress.toLowerCase()}`;
+    const cachedId = localStorage.getItem(cacheKey);
+    if (cachedId && !cachedId.toLowerCase().startsWith('0x')) return cachedId;
+
+    try {
+        const res = await fetch(`${MIRROR_BASE}/api/v1/accounts/${evmAddress}`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data.account) {
+                localStorage.setItem(cacheKey, data.account);
+                return data.account;
+            }
+        }
+    } catch (e) {
+        console.warn(`Could not resolve Hedera native ID for ${evmAddress}`, e);
+    }
+    return null;
+}
+
 // The long-zero address above is only valid for entities without a real
 // EVM alias (contracts, tokens, or accounts created without an ECDSA key).
 // An account that already has one (e.g. created via an EVM-compatible

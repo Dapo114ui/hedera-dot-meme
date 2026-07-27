@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js';
 import { ethers } from 'ethers';
-import { evmAddressToHederaId, fetchTokenTrades, fetchTokenHolders, fetchHbarUsdRate } from './mirror-trades.js';
+import { evmAddressToHederaId, fetchTokenTrades, fetchTokenHolders, fetchHbarUsdRate, getHederaNativeId } from './mirror-trades.js';
 import { isWatchlisted, toggleWatchlist } from './watchlist.js';
 import { wrapProviderForLegacyFees } from './provider-fee-fix.js';
 import { getAlertsForToken, addAlert, removeAlert, checkAlerts } from './alerts.js';
@@ -386,7 +386,7 @@ function timeAgo(timestampSeconds) {
     return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
-function renderTradesTable(trades) {
+async function renderTradesTable(trades) {
     const txBody = document.getElementById('tx-tbody');
     txBody.innerHTML = '';
 
@@ -396,18 +396,24 @@ function renderTradesTable(trades) {
     }
 
     const recent = [...trades].sort((a, b) => b.timestamp - a.timestamp).slice(0, 20);
-    for (const trade of recent) {
+
+    // Same convention as the leaderboard/portfolio: show the Hedera native
+    // ID (0.0.x), not the raw EVM address trades are recorded under.
+    const nativeIds = await Promise.all(recent.map(trade => getHederaNativeId(trade.trader)));
+
+    recent.forEach((trade, index) => {
         const hbarAmount = (Number(trade.hbarTinybars) / 1e8).toFixed(2);
         const isBuy = trade.type === 'buy';
+        const displayId = nativeIds[index] || (trade.trader.slice(0, 6) + '...' + trade.trader.slice(-4));
         const tr = document.createElement('tr');
         tr.innerHTML = `
-            <td style="font-family: monospace;">${trade.trader.slice(0, 6)}...${trade.trader.slice(-4)}</td>
+            <td style="font-family: monospace;">${displayId}</td>
             <td><span class="${isBuy ? 'type-buy' : 'type-sell'}">${isBuy ? 'BUY' : 'SELL'}</span></td>
             <td>${hbarAmount} HBAR</td>
             <td style="color: #94a3b8;">${timeAgo(trade.timestamp)}</td>
         `;
         txBody.appendChild(tr);
-    }
+    });
 }
 
 // Fire-and-forget: award trade-volume points server-side. Never blocks or

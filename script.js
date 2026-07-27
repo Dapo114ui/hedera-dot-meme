@@ -2,7 +2,7 @@ import { Buffer } from 'buffer';
 import { supabase } from './supabase.js';
 import { formatUnits, BrowserProvider, Contract, JsonRpcProvider } from 'ethers';
 import { appkit } from './wallet.js';
-import { evmAddressToHederaId, fetchTopTokensByVolume, fetchTokenMarketStats } from './mirror-trades.js';
+import { evmAddressToHederaId, fetchTopTokensByVolume, fetchTokenMarketStats, getHederaNativeId } from './mirror-trades.js';
 import { isWatchlisted, toggleWatchlist } from './watchlist.js';
 import { ONYC_BONDING_CURVE_ADDRESS, ONYC_BONDING_CURVE_ABI } from './router-registry.js';
 import { showAlert, showConfirm } from './ui-modal.js';
@@ -41,42 +41,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Helper Functions
-    async function getHederaNativeId(evmAddress) {
-        if (!evmAddress) return null;
-        if (/^0\.0\.\d+$/.test(evmAddress)) return evmAddress;
-        
-        // 1. Handle Long-Zero Address automatically
-        if (evmAddress.toLowerCase().startsWith('0x000000000000000000000000')) {
-            const hexNum = evmAddress.substring(26);
-            const accountNum = parseInt(hexNum, 16);
-            return `0.0.${accountNum}`;
-        }
-
-        // 2. Read from Cache
-        const cacheKey = `hedera_id_${evmAddress.toLowerCase()}`;
-        const cachedId = localStorage.getItem(cacheKey);
-        if (cachedId && !cachedId.toLowerCase().startsWith('0x')) return cachedId;
-
-        // 3. Mirror Node Fetch
-        try {
-            let response = await fetch(`https://mainnet-public.mirrornode.hedera.com/api/v1/accounts/${evmAddress}`);
-            if (!response.ok) {
-                response = await fetch(`https://testnet.mirrornode.hedera.com/api/v1/accounts/${evmAddress}`);
-            }
-
-            if (response.ok) {
-                const data = await response.json();
-                if (data.account) {
-                    localStorage.setItem(cacheKey, data.account);
-                    return data.account;
-                }
-            }
-        } catch (error) {
-            console.error("Could not fetch Hedera ID:", error);
-        }
-        return null;
-    }
-
     let currentUserEvm = null;
     let currentUserNative = null;
 
