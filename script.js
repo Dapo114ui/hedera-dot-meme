@@ -166,6 +166,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     // "was connected, this is just a fresh page load" (see below).
     const WALLET_HINT_KEY = 'onyc_wallet_was_connected';
 
+    // Caches the resolved {evm, native} address for the rest of THIS
+    // browser tab's life (sessionStorage, not localStorage - a new tab
+    // should still restore via the real flow below, not trust a stale
+    // cross-tab value). Restoring the "connected" UI only ever needs the
+    // address, never a live signer - any actual wallet action (buy/sell/
+    // launch/disconnect) already fetches a fresh signer at the moment it's
+    // needed regardless, since a signer object can't survive a page reload
+    // anyway. So once this is populated, every later page in the same tab
+    // can skip straight to it instead of re-running the eth_requestAccounts
+    // restore below, which is the one that pops HashPack's own window.
+    const WALLET_SESSION_KEY = 'onyc_wallet_session';
+
     // Injected wallets have no real "disconnect" at the EIP-1193 level - a
     // dApp can't revoke the origin's permission, only the user can from
     // inside the wallet. HashPack keeps answering eth_accounts with the
@@ -239,21 +251,35 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (accounts && accounts[0]) {
                             isConnected = true;
                             address = accounts[0];
-                        } else if (localStorage.getItem(WALLET_HINT_KEY) === '1') {
-                            try {
-                                const requested = await provider.request({ method: 'eth_requestAccounts' });
-                                if (requested && requested[0]) {
-                                    isConnected = true;
-                                    address = requested[0];
-                                } else {
+                        } else {
+                            // eth_accounts came back empty - before paying for
+                            // a popup-triggering eth_requestAccounts, check
+                            // whether this tab already resolved the address
+                            // on an earlier page. If so, trust it: no signer
+                            // is needed just to show "connected", so this
+                            // stays silent for every page after the first one
+                            // in a tab.
+                            const cachedRaw = sessionStorage.getItem(WALLET_SESSION_KEY);
+                            const cached = cachedRaw ? JSON.parse(cachedRaw) : null;
+                            if (cached?.evm) {
+                                isConnected = true;
+                                address = cached.evm;
+                            } else if (localStorage.getItem(WALLET_HINT_KEY) === '1') {
+                                try {
+                                    const requested = await provider.request({ method: 'eth_requestAccounts' });
+                                    if (requested && requested[0]) {
+                                        isConnected = true;
+                                        address = requested[0];
+                                    } else {
+                                        localStorage.removeItem(WALLET_HINT_KEY);
+                                    }
+                                } catch (reqErr) {
+                                    // User dismissed/rejected the restore prompt -
+                                    // treat as an explicit disconnect so it isn't
+                                    // asked again on the next page.
+                                    console.warn("eth_requestAccounts restore was rejected:", reqErr);
                                     localStorage.removeItem(WALLET_HINT_KEY);
                                 }
-                            } catch (reqErr) {
-                                // User dismissed/rejected the restore prompt -
-                                // treat as an explicit disconnect so it isn't
-                                // asked again on the next page.
-                                console.warn("eth_requestAccounts restore was rejected:", reqErr);
-                                localStorage.removeItem(WALLET_HINT_KEY);
                             }
                         }
                     }
@@ -291,6 +317,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 }
 
+                sessionStorage.setItem(WALLET_SESSION_KEY, JSON.stringify({ evm: currentUserEvm, native: currentUserNative }));
                 console.log('Parsed ID:', currentUserNative, '| EVM:', address);
             } else {
                 console.log('Wallet disconnected or missing address:', { isConnected, address });
@@ -354,6 +381,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     explicitDisconnect = true;
                     try { await appkit.disconnect(); } catch(err){}
                     localStorage.removeItem(WALLET_HINT_KEY);
+                    sessionStorage.removeItem(WALLET_SESSION_KEY);
                     currentUserEvm = null;
                     currentUserNative = null;
                     updateWalletUI();
