@@ -39,6 +39,7 @@
                 Leaderboard
             </a>
             <a href="portfolio.html" class="nav-link">Portfolio</a>
+            <a href="docs.html" class="nav-link">Docs</a>
         </nav>
 
         <button id="custom-wallet-btn" class="connect-btn">Connect Wallet</button>
@@ -71,7 +72,66 @@
         </div>
     </main>
 
+    <section class="features-section">
+        <h2 class="features-title">Everything you can do on Onyc.meme</h2>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-card-icon">🚀</div>
+                <h3>Launch</h3>
+                <p>Create a meme token in seconds - fixed 1B supply, no admin key, seeded straight onto a bonding
+                    curve for one flat creation fee. No liquidity to provide, no code to write.</p>
+                <a href="launch.html">Launch a token &rarr;</a>
+            </div>
+            <div class="feature-card">
+                <div class="feature-card-icon">💱</div>
+                <h3>Trade</h3>
+                <p>Buy and sell directly against the bonding curve at a transparent, on-chain price - no order book,
+                    no counterparty. Just 1% trading fee, both ways.</p>
+                <a href="markets.html">Browse tokens &rarr;</a>
+            </div>
+            <div class="feature-card">
+                <div class="feature-card-icon">🏆</div>
+                <h3>Earn Points</h3>
+                <p>Every trade earns points toward a future token airdrop, verified independently against the
+                    on-chain trade itself - not something you can fake client-side.</p>
+                <a href="leaderboard.html">View leaderboard &rarr;</a>
+            </div>
+            <div class="feature-card">
+                <div class="feature-card-icon">📊</div>
+                <h3>Track Your Portfolio</h3>
+                <p>See every token you hold or launched in one place, real balances and prices pulled live from the
+                    chain.</p>
+                <a href="portfolio.html">Open portfolio &rarr;</a>
+            </div>
+        </div>
+    </section>
 
+    <footer class="site-footer">
+        <div class="footer-inner">
+            <div class="footer-brand">
+                <img src="/onyc-icon.png" alt="Onyc.meme logo">
+                <span>Onyc.meme</span>
+            </div>
+            <p class="footer-tagline">A meme-token launchpad on Hedera, built on our own verified bonding-curve
+                contract. Testnet deployment - no real funds at risk.</p>
+            <div class="footer-social-row">
+                <a class="footer-social-btn" href="docs.html" title="Docs" aria-label="Docs">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                </a>
+                <a class="footer-social-btn" href="https://x.com/onyc_meme" target="_blank" rel="noopener noreferrer" title="X (Twitter)" aria-label="X (Twitter)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                </a>
+                <a class="footer-social-btn" href="https://discord.gg/rZQCC4Tgz" target="_blank" rel="noopener noreferrer" title="Discord" aria-label="Discord">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.74 19.74 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.29a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.196.373.29a.077.077 0 0 1-.006.128c-.598.35-1.22.645-1.873.892a.076.076 0 0 0-.041.106c.36.698.772 1.362 1.225 1.994a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.056c.5-5.177-.838-9.674-3.549-13.66a.06.06 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.176 1.094 2.157 2.418 0 1.334-.955 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.176 1.094 2.157 2.418 0 1.334-.946 2.419-2.157 2.419z"/></svg>
+                </a>
+            </div>
+            <div class="footer-meta-row">
+                <a href="https://hashscan.io/testnet/contract/0x035b2f0f3306231eec998d23eaf5d08eaa885542" target="_blank" rel="noopener noreferrer">HashScan</a>
+                <a href="https://hedera.com" target="_blank" rel="noopener noreferrer">Hedera</a>
+                <a class="verified" href="https://sourcify.dev/#/lookup/0x035B2F0f3306231Eec998D23EAf5d08EAa885542" target="_blank" rel="noopener noreferrer">Contracts verified &#10003;</a>
+            </div>
+        </div>
+    </footer>
 
     <script type="module" src="script.js"></script>
 </body>

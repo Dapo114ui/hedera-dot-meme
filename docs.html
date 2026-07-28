@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Docs - Onyc.meme</title>
+    <meta name="description" content="How Onyc.meme's bonding-curve launchpad works: launching, trading, points, and the verified contract behind it.">
+    <link rel="icon" type="image/png" href="/onyc-icon.png">
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        .docs-main { max-width: 780px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+        .docs-main h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 0.5rem; }
+        .docs-main .docs-subtitle { color: var(--text-secondary); margin-bottom: 3rem; }
+        .docs-section { margin-bottom: 2.75rem; }
+        .docs-section h2 { font-size: 1.4rem; font-weight: 700; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); }
+        .docs-section h3 { font-size: 1.05rem; font-weight: 600; margin: 1.25rem 0 0.5rem; }
+        .docs-section p { color: var(--text-secondary); line-height: 1.7; margin-bottom: 0.9rem; }
+        .docs-section ul { color: var(--text-secondary); line-height: 1.7; margin: 0 0 0.9rem 1.25rem; }
+        .docs-section li { margin-bottom: 0.4rem; }
+        .docs-section code { background: var(--surface-dark); border: 1px solid var(--border-color); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.85em; color: var(--text-primary); }
+        .docs-fact-box { background: var(--surface-dark); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
+        .docs-fact-box .summary-row:not(:last-child) { border-bottom: 1px solid var(--border-color); padding-bottom: 0.6rem; margin-bottom: 0.6rem; }
+        .docs-callout { background: rgba(253, 224, 48, 0.06); border: 1px solid rgba(253, 224, 48, 0.2); border-radius: 12px; padding: 1rem 1.25rem; color: var(--text-secondary); font-size: 0.9rem; line-height: 1.6; }
+        .docs-callout strong { color: var(--text-primary); }
+    </style>
+</head>
+
+<body>
+    <div class="overlay-gradient"></div>
+    <header class="navbar">
+        <a class="logo-container" href="home.html" aria-label="Onyc.meme home">
+            <img class="logo-icon" src="/onyc-icon.png" alt="Onyc.meme logo">
+            <span class="logo-text">Onyc.meme</span>
+        </a>
+
+        <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Toggle menu">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+
+        <nav class="nav-links">
+            <a href="launch.html" class="nav-link">Launch Meme</a>
+            <a href="markets.html" class="nav-link">Markets</a>
+            <a href="leaderboard.html" class="nav-link">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" class="nav-icon"><path d="M8 21H16M12 17V21M7 4H17M7 4C7 8.418 8.418 12 12 12M17 4C17 8.418 15.582 12 12 12M7 4H5C3.895 4 3 4.895 3 6C3 8.209 4.791 10 7 10H7C8.418 10 10 8.418 10 6M17 4H19C20.105 4 21 4.895 21 6C21 8.209 19.209 10 17 10H17C15.582 10 14 8.418 14 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Leaderboard
+            </a>
+            <a href="portfolio.html" class="nav-link">Portfolio</a>
+            <a href="docs.html" class="nav-link">Docs</a>
+        </nav>
+
+        <button id="custom-wallet-btn" class="connect-btn">Connect Wallet</button>
+    </header>
+
+    <main class="docs-main">
+        <h1>How Onyc.meme works</h1>
+        <p class="docs-subtitle">A meme-token launchpad on Hedera Testnet, built on our own bonding-curve contract.</p>
+
+        <div class="docs-callout" style="margin-bottom: 2.75rem;">
+            <strong>Testnet only.</strong> Everything here runs on Hedera Testnet with test HBAR - nothing has real
+            value, and none of your real funds are ever at risk.
+        </div>
+
+        <section class="docs-section">
+            <h2>Launching a token</h2>
+            <p>Anyone can launch a meme token by paying a single flat creation fee. There's no admin key, no
+                supply changes after launch, and no liquidity to provide yourself - your token is minted straight
+                onto a bonding curve that anyone can trade against immediately.</p>
+            <div class="docs-fact-box">
+                <div class="summary-row"><span class="summary-label">Total supply</span><span class="summary-value">1,000,000,000 (fixed)</span></div>
+                <div class="summary-row"><span class="summary-label">On the bonding curve</span><span class="summary-value">800,000,000 (80%)</span></div>
+                <div class="summary-row"><span class="summary-label">Reserved for future DEX liquidity*</span><span class="summary-value">200,000,000 (20%)</span></div>
+                <div class="summary-row"><span class="summary-label">Creation fee</span><span class="summary-value">45 HBAR (flat)</span></div>
+            </div>
+            <p style="font-size: 0.85rem;">*Not yet live - migrating a graduated token's liquidity to a public DEX is a
+                planned future feature. Today, graduation only stops further trading on the curve.</p>
+        </section>
+
+        <section class="docs-section">
+            <h2>Trading</h2>
+            <p>Every token trades against a constant-product bonding curve, the same mechanism used by most
+                curve-based launchpads: the more of a token that's been bought, the higher the price climbs for the
+                next buyer, and selling moves it back down. There's no order book and no counterparty to wait on -
+                you're always trading directly against the curve.</p>
+            <ul>
+                <li>1% trading fee on every buy and every sell</li>
+                <li>Slippage tolerance you set yourself before confirming a trade</li>
+                <li>Live price, market cap, and bonding progress read straight from the contract</li>
+            </ul>
+            <h3>Graduation</h3>
+            <p>Once a token's real HBAR raised crosses <strong>72,270 HBAR</strong>, it "graduates." That's the
+                <code>Bonding Progress</code> bar you see on every coin page.</p>
+        </section>
+
+        <section class="docs-section">
+            <h2>Points &amp; the leaderboard</h2>
+            <p>Every trade earns points toward a future token airdrop. Points aren't self-reported by your
+                browser - they're calculated server-side from the actual on-chain trade event, so they can't be
+                faked client-side.</p>
+            <ul>
+                <li>10 points per HBAR traded, for your first 20 HBAR of volume in a rolling 24 hours</li>
+                <li>3 points per HBAR for the next 30 HBAR (20-50 HBAR total)</li>
+                <li>No further points past 50 HBAR in 24 hours</li>
+            </ul>
+            <p>The <a href="leaderboard.html" style="color: var(--accent-yellow);">leaderboard</a> ranks the top
+                traders by points and the top tokens by real trading volume.</p>
+        </section>
+
+        <section class="docs-section">
+            <h2>The contract</h2>
+            <p>Onyc.meme runs on our own first-party bonding-curve contract - <code>OnycBondingCurve</code> - rather
+                than a third-party one, so the full source is ours to publish and verify.</p>
+            <div class="docs-fact-box">
+                <div class="summary-row"><span class="summary-label">Network</span><span class="summary-value">Hedera Testnet</span></div>
+                <div class="summary-row"><span class="summary-label">Address</span><span class="summary-value" style="font-size: 0.85rem;">0x035B2F...885542</span></div>
+                <div class="summary-row"><span class="summary-label">Sourcify</span><span class="summary-value" style="color: #10b981;">Exact match ✓</span></div>
+            </div>
+            <p>You can look up the deployed bytecode against the published source yourself on
+                <a href="https://sourcify.dev/#/lookup/0x035B2F0f3306231Eec998D23EAf5d08EAa885542" target="_blank" rel="noopener noreferrer" style="color: var(--accent-yellow);">Sourcify</a>
+                or view the contract on
+                <a href="https://hashscan.io/testnet/contract/0x035b2f0f3306231eec998d23eaf5d08eaa885542" target="_blank" rel="noopener noreferrer" style="color: var(--accent-yellow);">HashScan</a>.</p>
+            <div class="docs-callout">
+                <strong>Verified &ne; audited.</strong> "Verified" means the deployed bytecode matches the published
+                source exactly - nothing was swapped in secretly. It does not mean the contract's logic has been
+                reviewed by a professional security auditor. Treat this as testnet-stage software.
+            </div>
+        </section>
+
+        <section class="docs-section">
+            <h2>Wallets</h2>
+            <p>Onyc.meme works with any Hedera-compatible EVM wallet - HashPack is the one we test against most.
+                Connect from the button in the top right on any page; your session stays connected as you move
+                between pages.</p>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <div class="footer-inner">
+            <div class="footer-brand">
+                <img src="/onyc-icon.png" alt="Onyc.meme logo">
+                <span>Onyc.meme</span>
+            </div>
+            <p class="footer-tagline">A meme-token launchpad on Hedera, built on our own verified bonding-curve
+                contract. Testnet deployment - no real funds at risk.</p>
+            <div class="footer-social-row">
+                <a class="footer-social-btn" href="docs.html" title="Docs" aria-label="Docs">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                </a>
+                <a class="footer-social-btn" href="https://x.com/onyc_meme" target="_blank" rel="noopener noreferrer" title="X (Twitter)" aria-label="X (Twitter)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                </a>
+                <a class="footer-social-btn" href="https://discord.gg/rZQCC4Tgz" target="_blank" rel="noopener noreferrer" title="Discord" aria-label="Discord">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.74 19.74 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.29a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.196.373.29a.077.077 0 0 1-.006.128c-.598.35-1.22.645-1.873.892a.076.076 0 0 0-.041.106c.36.698.772 1.362 1.225 1.994a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.056c.5-5.177-.838-9.674-3.549-13.66a.06.06 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.176 1.094 2.157 2.418 0 1.334-.955 2.419-2.157 2.419zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.418 2.157-2.418 1.21 0 2.176 1.094 2.157 2.418 0 1.334-.946 2.419-2.157 2.419z"/></svg>
+                </a>
+            </div>
+            <div class="footer-meta-row">
+                <a href="https://hashscan.io/testnet/contract/0x035b2f0f3306231eec998d23eaf5d08eaa885542" target="_blank" rel="noopener noreferrer">HashScan</a>
+                <a href="https://hedera.com" target="_blank" rel="noopener noreferrer">Hedera</a>
+                <a class="verified" href="https://sourcify.dev/#/lookup/0x035B2F0f3306231Eec998D23EAf5d08EAa885542" target="_blank" rel="noopener noreferrer">Contracts verified &#10003;</a>
+            </div>
+        </div>
+    </footer>
+
+    <script type="module" src="script.js"></script>
+</body>
+
+</html>
