@@ -25,7 +25,8 @@ export default defineConfig({
         launch: resolve(__dirname, 'launch.html'),
         leaderboard: resolve(__dirname, 'leaderboard.html'),
         portfolio: resolve(__dirname, 'portfolio.html'),
-        coin: resolve(__dirname, 'coin.html')
+        coin: resolve(__dirname, 'coin.html'),
+        docs: resolve(__dirname, 'docs.html')
       }
     }
   }
